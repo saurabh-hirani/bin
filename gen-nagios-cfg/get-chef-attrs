@@ -6,7 +6,7 @@ Usage:
 Options:
     -h,--help                             show this help text
     -H <hosts-file>, --hosts <hosts-file> target hosts file - one host per line
-    --chef-cfg <chef-cfg-file>            chef config file
+    --chef-cfg <chef-cfg-file>            yaml based chef config file
     --cache <cache-file>                  cache for storing looked up hosts
     --attrs <attr>                        chef attributes to search
 """
