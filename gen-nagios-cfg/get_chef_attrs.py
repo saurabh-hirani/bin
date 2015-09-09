@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Usage:
-    get-chef-attrs [-h|--help] --hosts <hosts-file> --chef-cfg <chef-cfg-file> --cache <cache-file> --attrs <attr>...
+    get_chef_attrs [-h|--help] --hosts <hosts-file> --chef-cfg <chef-cfg-file> --cache <cache-file> --attrs <attr>...
 
 Options:
     -h,--help                             show this help text
@@ -114,7 +114,7 @@ def load_args(args):
 def main(args):
   opts = load_args(args)
   validate_input(opts)
-  get_chef_attrs(opts)
+  return get_chef_attrs(opts)
 
 if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+  main(sys.argv[1:])
