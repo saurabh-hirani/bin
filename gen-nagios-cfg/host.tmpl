@@ -1,0 +1,9 @@
+define host {
+    use            linux-server
+    host_name      $host_name
+    alias          $host_alias
+    address        $address
+    hostgroups     $hostgroup
+    check_command  check-host-alive
+}
+

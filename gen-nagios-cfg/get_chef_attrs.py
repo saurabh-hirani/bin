@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 """
 Usage:
-    get_chef_attrs [-h|--help] --hosts <hosts-file> --chef-cfg <chef-cfg-file> --cache <cache-file> --attrs <attr>...
+    get_chef_attrs.py [-h|--help] --hosts <hosts-file> [--chef-cfg <chef-cfg-file>] --cache <cache-file> [--ext <extension>] --attrs <attr>... [--verbose] 
 
 Options:
     -h,--help                             show this help text
     -H <hosts-file>, --hosts <hosts-file> target hosts file - one host per line
-    --chef-cfg <chef-cfg-file>            yaml based chef config file
+    --chef-cfg <chef-cfg-file>            yaml based chef config file [default: chef.yml]
     --cache <cache-file>                  cache for storing looked up hosts
     --attrs <attr>                        chef attributes to search
+    --ext <extension>                     add this host extension to re-search if the search fails
+    -v, --verbose                         verbose mode
 """
 
 import os
@@ -36,9 +38,11 @@ def lookup_chef(opts, hosts):
       n = chef.Node(host)
       ipaddr =  n.attributes.get('ipaddress')
 
-      if ipaddr is None:
-        host = host.split('.')[0]
-        n = chef.Node(host)
+      if ipaddr is None or ipaddr == 'None':
+        if opts['--ext'] is not None:
+          host = host + '.' + opts['--ext']
+          n = chef.Node(host)
+          ipaddr =  n.attributes.get('ipaddress')
 
       for attr in opts['--attrs']:
         attrs_map[str(attr)] = str(n.attributes.get(attr))
@@ -48,8 +52,10 @@ def lookup_chef(opts, hosts):
       else:
         cache[host] = {}
 
-      print json.dumps(attrs_map, indent=4)
-      print "-----------------"
+      if '--verbose' in opts and opts['--verbose']:
+        print "------------"
+        print host
+        print json.dumps(attrs_map, indent=4)
 
   return cache
 
@@ -87,7 +93,6 @@ def get_chef_attrs(opts):
     with open(opts['--cache'], 'w') as f:
       f.write(json.dumps(cache, indent=4))
 
-  print json.dumps(cache, indent=4)
   return cache
 
 def validate_input(opts):
@@ -111,10 +116,11 @@ def load_args(args):
   parsed_docopt = docopt(__doc__)
   return parsed_docopt
 
-def main(args):
-  opts = load_args(args)
+def main(opts):
   validate_input(opts)
   return get_chef_attrs(opts)
 
 if __name__ == '__main__':
-  main(sys.argv[1:])
+  opts = load_args(sys.argv[1:])
+  attrs = main(opts)
+  print json.dumps(attrs, indent=4)
