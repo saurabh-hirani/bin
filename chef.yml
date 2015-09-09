@@ -1,0 +1,4 @@
+chef:
+  host: chef_host
+  pem: chef_pem
+  user: chef_user
