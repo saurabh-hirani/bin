@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ping, retry, reconnect, repeat.
+# wifi - ping, retry, reconnect, repeat.
 
 target=${1:-'4.2.2.2'}
 
