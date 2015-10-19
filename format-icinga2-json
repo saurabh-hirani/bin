@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+
+# echo "GET hosts\nOutputFormat: json\n" | nc icinga2_host livestatus_port | format-icinga2-json
+
+import sys
+import json
+import fileinput
+
+orig_json_str = sys.stdin.read()
+orig_json = json.loads(orig_json_str)
+new_json = [dict(zip(orig_json[0], line)) for line in orig_json[1:]]
+print json.dumps(new_json, indent=2)
