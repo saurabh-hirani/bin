@@ -1,0 +1,9 @@
+#!/bin/bash
+
+interface=$1
+while :; do
+  output=$(iwconfig wlp3s0 | egrep 'Bit Rate|Link Quality' | tr '\n' ' ' | tr -s ' ')
+  echo "------"
+  echo $(date): $output
+  sleep 5
+done
