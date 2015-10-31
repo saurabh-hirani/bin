@@ -2,8 +2,8 @@
 
 interface=$1
 while :; do
-  output=$(iwconfig wlp3s0 | egrep 'Bit Rate|Link Quality' | tr '\n' ' ' | tr -s ' ')
+  output=$(iwconfig $interface | egrep 'Bit Rate|Link Quality' | tr '\n' ' ' | tr -s ' ')
   echo "------"
   echo $(date): $output
-  sleep 5
+  sleep 10
 done
