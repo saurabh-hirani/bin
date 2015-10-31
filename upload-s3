@@ -10,27 +10,24 @@ if len(sys.argv) != 3 or sys.argv[1] == 'help' or sys.argv[1] == '--help':
   sys.exit(0)
 
 def transfer_status(xferred, total):
-  if xferred < 1024:
-    print '%d bytes transferred out of %d bytes' % (xferred, total)
-    return
 
-  if 1024 < xferred < 1024 ** 2:
+  units = None
+  if xferred <= 1024:
+    units = 'bytes'
+  elif 1024 < xferred < 1024 ** 2:
     xferred /= 1024.0
     total /= 1024.0
-    print '%.2f KB transferred out of %.2f KB' % (xferred, total)
-    return
-
-  if 1024 ** 2 < xferred < 1024 ** 3:
+    units = 'KB'
+  elif 1024 ** 2 < xferred < 1024 ** 3:
     xferred /= 1024.0 ** 2
     total /= 1024.0 ** 2
-    print '%.2f MB transferred out of %.2f MB' % (xferred, total)
-    return
+    units = 'MB'
+  else:
+    xferred /= 1024.0 ** 3
+    total /= 1024.0 ** 3
+    units = 'GB'
 
-  if xferred >= 1024 ** 3:
-    xferred /= 1024.0 ** 2
-    total /= 1024.0 ** 2
-    print '%.2f GB transferred out of %.2f GB' % (xferred, total)
-    return
+  print '%.2f %s transferred out of %.2f %s' % (xferred, units, total, units)
 
 target_file = sys.argv[1]
 target_bucket = sys.argv[2]
