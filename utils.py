@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+# use with pyfunc
+# e.g. pyfunc -f ~/github/bin/utils.py -m lookup_json -a name_to_age.json saurabh
+
 import sys
 import json
 
