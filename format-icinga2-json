@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# echo "GET hosts\nOutputFormat: json\n" | nc icinga2_host livestatus_port | format-icinga2-json
+# echo -e "GET hosts\nOutputFormat: json\n" | nc icinga2_host livestatus_port | format-icinga2-json
 
 import sys
 import json
