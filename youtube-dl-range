@@ -1,0 +1,6 @@
+#!/bin/bash
+# $1 = url
+# $2 = HH:MM:SS - start time
+# $3 = HH:MM:SS - duration
+# $4 = mp4 file location
+ffmpeg -ss $2 -i $(youtube-dl -f 22 --get-url $1) -t $3 -c:v copy -c:a copy $4
