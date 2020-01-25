@@ -1,0 +1,4 @@
+#!/bin/bash
+
+curl -X GET $ES_HOST/_cat/indices/\?pretty 2>/dev/null  | cut -f3 -d' ' | sort | uniq
+

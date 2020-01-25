@@ -1,0 +1,15 @@
+#!/bin/bash 
+
+
+
+usage="$0 index"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+set -x
+
+curl -X GET $ES_HOST/$1/_count?pretty

@@ -1,0 +1,28 @@
+#!/bin/bash
+
+usage="$0 index start_time end_time"
+
+if [[ $# -ne 3 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+index=$1
+start_time=$2
+end_time=$3
+
+set -x
+
+curl -X GET -H 'Content-Type: application/json' "$ES_HOST/$index/_count?pretty" -d "{
+    \"query\": {
+        \"range\" : {
+            \"ul_timestamp_epoch_iso8601\" : {
+                \"gte\" : \"$start_time\",
+                \"lt\" :  \"$end_time\"
+            }
+        }
+    }
+}"
+
+
