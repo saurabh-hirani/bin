@@ -1,0 +1,14 @@
+#!/bin/bash
+
+usage="$0 load_balancer instance_id"
+
+if [[ $# -ne 2 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+load_balancer=$1
+instance_id=$2
+
+aws elb register-instances-with-load-balancer --load-balancer-name $load_balancer --instances $instance_id

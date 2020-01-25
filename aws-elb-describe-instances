@@ -1,0 +1,18 @@
+#!/bin/bash
+
+usage="$0 load_balancer"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+load_balancer=$1
+
+instance_ids=$(aws elb describe-load-balancers --load-balancer-names $load_balancer | grep InstanceId | cut -f2 -d ':' | tr -d '"' | tr -d ' ')
+
+for instance_id in $instance_ids; do
+  echo -n "$instance_id: "
+  aws ec2 describe-instances --filters Name=instance-id,Values=$instance_id --query Reservations[].Instances[].Tags[].Value --output text
+done

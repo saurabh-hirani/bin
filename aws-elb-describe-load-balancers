@@ -1,0 +1,5 @@
+#!/bin/bash
+
+usage="$0"
+
+aws elb describe-load-balancers | jq -r ' .LoadBalancerDescriptions[] | {DNSName: .DNSName, CName: .CanonicalHostedZoneName, LoadBalancerName: .LoadBalancerName  }'
