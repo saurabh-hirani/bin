@@ -1,0 +1,17 @@
+#!/bin/bash
+
+usage="$0 concurrency avg_duration_sec"
+
+if [[ $# -ne 2 ]]; then
+  echo "ERROR: Invalid usage"
+  echo $usage
+  exit 1
+fi
+
+concurrency=$1
+avg_duration_sec=$2
+
+calls_per_min=$(echo "60 / $avg_duration_sec" | bc -l)
+invocations=$(echo "scale=2; $concurrency * $calls_per_min" | bc -l)
+
+echo "$invocations"

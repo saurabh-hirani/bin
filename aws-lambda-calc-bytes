@@ -1,0 +1,16 @@
+#!/bin/bash
+
+usage="$0 concurrency avg_duration_sec avg_payload_bytes"
+
+if [[ $# -ne 3 ]]; then
+  echo "ERROR: Invalid usage"
+  echo $usage
+  exit 1
+fi
+
+concurrency=$1
+avg_duration_sec=$2
+avg_payload_bytes=$3
+
+invocations=$(./aws-lambda-calc-invocations $concurrency $avg_duration_sec)
+echo "scale=2; $invocations * $avg_payload_bytes" | bc

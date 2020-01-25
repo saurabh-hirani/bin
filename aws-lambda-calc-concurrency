@@ -1,0 +1,18 @@
+#!/bin/bash
+
+usage="$0 avg_duration_sec avg_payload_bytes limit_bytes_per_min"
+
+if [[ $# -ne 3 ]]; then
+  echo "ERROR: Invalid usage"
+  echo $usage
+  exit 1
+fi
+
+avg_duration_sec=$1
+avg_payload_bytes=$2
+limit_bytes_per_min=$3
+
+base_concurrency_bytes_per_min=$(echo "scale=2; (1 / $avg_duration_sec) * 60 * $avg_payload_bytes" | bc)
+required_concurrency_bytes_per_min=$(echo "scale=2; $limit_bytes_per_min / $base_concurrency_bytes_per_min" | bc)
+
+echo $required_concurrency_bytes_per_min
