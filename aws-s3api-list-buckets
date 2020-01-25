@@ -1,0 +1,5 @@
+#!/bin/bash
+
+usage="$0"
+
+aws s3api list-buckets | jq -r '.Buckets[].Name'

@@ -1,0 +1,13 @@
+#!/bin/bash -e 
+
+usage="$0 bucket_name"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+bucket_name=$1
+
+aws s3api get-bucket-tagging --bucket $bucket_name

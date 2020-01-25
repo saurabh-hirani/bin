@@ -1,0 +1,14 @@
+#!/bin/bash -e 
+
+usage="$0 buket_name tagging_file"
+
+if [[ $# -ne 2 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+bucket_name=$1
+tagging_file=$2
+
+aws s3api put-bucket-tagging --bucket $bucket_name --tagging file://$tagging_file

@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+
+# python aws-s3api-inject-tag-in-bucket '{ "TagSet": [{"Key": "adsk:moniker", "Value": "INS-S-UE1"}, {"Key": "adsk:service", "Value": "INS-S-UE1" }] }'
+
+from __future__ import print_function
+
+import sys
+import boto3
+from botocore.exceptions import ClientError
+import json
+
+client = boto3.client('s3')
+resource = boto3.resource('s3')
+tagset_ds = json.loads(sys.argv[1])
+
+response = client.list_buckets()
+
+for bucket_ds in response['Buckets']:
+    curr_bucket_tagset = {'TagSet': []}
+    has_name_tag = False
+
+    for tag_kv in tagset_ds['TagSet']:
+        if tag_kv['Key'] == 'Name':
+            has_name_tag = True
+        curr_bucket_tagset['TagSet'].append(tag_kv)
+
+    if not has_name_tag:
+        curr_bucket_tagset['TagSet'].append({'Key': 'Name', 'Value': bucket_ds['Name']})
+
+    # re-tag the bucket with the new keys
+    bucket_tagging_obj = resource.BucketTagging(bucket_ds['Name'])
+    response = bucket_tagging_obj.put(
+        Tagging=curr_bucket_tagset
+    )
+
+    print("======={}=======".format(bucket_ds['Name']))
+    response = client.get_bucket_tagging(Bucket=bucket_ds['Name'])
+    print(json.dumps(response['TagSet'], indent=2))
