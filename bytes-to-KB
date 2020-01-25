@@ -1,0 +1,5 @@
+#!/bin/bash
+
+while read bytes; do
+  echo "scale=2; $bytes / (1024)" | bc
+done < /dev/stdin

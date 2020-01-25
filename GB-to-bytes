@@ -1,0 +1,6 @@
+#!/bin/bash
+
+while read GB; do
+  echo "scale=2; $GB * (1024 * 1024 * 1024)" | bc
+done < /dev/stdin
+

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+while read MB; do
+  echo "scale=2; $MB * (1024 * 1024)" | bc
+done < /dev/stdin
