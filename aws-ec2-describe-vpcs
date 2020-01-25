@@ -1,0 +1,6 @@
+#!/bin/bash
+
+usage="$0"
+
+aws ec2 describe-vpcs | jq '.Vpcs[] | { VpcId: .VpcId, Name: .Tags[] | select (.Key == "Name") | .Value }'
+

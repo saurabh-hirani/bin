@@ -1,0 +1,14 @@
+#!/bin/bash
+
+usage="$0 instance_name_prefix"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+instance_name_prefix=$1
+
+# filter - jq -r '.[].InstanceId'
+aws ec2 describe-instances --query 'Reservations[].Instances[].{InstanceId: InstanceId, Tags: Tags[]}' --filters "Name=tag:Name,Values=$instance_name_prefix*"

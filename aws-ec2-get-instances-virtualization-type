@@ -1,0 +1,6 @@
+#!/bin/bash -e 
+
+usage="$0"
+
+ws ec2 describe-instances | \
+jq -c -r '.Reservations[].Instances[] | {InstanceId: .InstanceId, ImageId: .ImageId, VirtualizationType: .VirtualizationType, Name: .Tags[] | select (.Key == "Name") | .Value}'

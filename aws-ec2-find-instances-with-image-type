@@ -1,0 +1,18 @@
+#!/bin/bash
+
+usage="$0 virt_type"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+virt_type=$1
+
+instance_ids=$(aws ec2 describe-instances | jq -r '.[].InstanceId')
+
+for id in $instance_ids; do
+  virt_type=$(aws ec2 describe-images --image-ids $id | jq -r '.Images[].VirtualizationType')
+  echo "$id: $virt_type"
+done

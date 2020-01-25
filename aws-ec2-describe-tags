@@ -1,0 +1,13 @@
+#!/bin/bash -e
+
+usage="$0 resource_id"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+resource_id=$1
+
+aws ec2 describe-tags --filters="Name=resource-id,Values=$resource_id" | jq -c '.[] | map({Key,Value})' | tee /tmp/tags-${resource_id}.json

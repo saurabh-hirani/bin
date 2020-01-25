@@ -1,0 +1,15 @@
+#!/bin/bash -e
+
+usage="$0 resource_id"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+resource_id=$1
+
+set -x
+aws ec2 create-tags --resources $resource_id --tags "$(cat /tmp/tags-${resource_id}.json)"
+set +x

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+usage="$0 vpc_id"
+
+if [[ $# -ne 1 ]]; then
+  echo 'ERROR: Invalid usage'
+  echo $usage
+  exit 1
+fi
+
+vpc_id=$1
+
+aws ec2 describe-subnets --filters="Name=vpc-id,Values=$vpc_id" | jq -S '.Subnets[] | { subnet: .SubnetId, Name: .Tags[] | select(.Key == "Name") | .Value }'
