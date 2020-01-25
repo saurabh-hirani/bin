@@ -1,0 +1,15 @@
+#!/bin/bash
+
+usage="$0 pngfile"
+
+if [[ $# -ne 1 ]]; then
+  echo "ERROR: Invalid usage"
+  echo $usage
+  exit 1
+fi
+
+file=$1
+
+filename=$(echo $file | cut -f1 -d'.')
+
+sips -s format pdf $1 --out ${filename}.pdf
