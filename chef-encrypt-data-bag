@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+
+require 'json'
+require 'chef/encrypted_data_bag_item'
+
+keyfile = ARGV[0]
+
+secret = Chef::EncryptedDataBagItem.load_secret(keyfile)
+encrypted_data = Chef::EncryptedDataBagItem.encrypt_data_bag_item(JSON.parse(STDIN.read), secret)
+
+puts JSON.pretty_generate(encrypted_data)
