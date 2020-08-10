@@ -1,13 +1,31 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
+import os
 import sys
 import prettytable
 
 table = None
-for row in sys.stdin:
-  if table is None:
-    table = prettytable.PrettyTable(row.split(','))
-  else:
-    table.add_row(row.split(','))
+add_sr_no = os.environ.get('TABLE_ADD_SR_NO', '0')
+add_header = os.environ.get('TABLE_ADD_HEADER', '1')
+sr_no = 1
 
-print table
+for row in sys.stdin:
+    if table is None:
+        header_row = row.split(',')
+        if add_header == '0':
+            n_cols = len(header_row)
+            if add_sr_no:
+                n_cols += 1
+            header_row = ['h' + str(x) for x in range(n_cols)]
+        else:
+            if add_sr_no == '1':
+                header_row = ['sr_no'] + header_row
+        table = prettytable.PrettyTable(header_row)
+    else:
+        data_row = row.split(',')
+        if add_sr_no == '1':
+            data_row = [sr_no] + data_row
+        table.add_row(data_row)
+        sr_no += 1
+
+print(table)
