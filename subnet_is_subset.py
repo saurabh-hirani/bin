@@ -23,7 +23,7 @@ print(
     json.dumps({
         network_1_str + '-hosts': network_1_hosts,
         network_2_str + '-hosts': network_2_hosts,
-        'diff_hosts': sorted(list(diff_hosts))
+        'diff_hosts': list(sorted(ipaddress.ip_address(host) for host in diff_hosts))
     }, indent=2, default=str)
 )
 
