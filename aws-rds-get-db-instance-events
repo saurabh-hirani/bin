@@ -1,3 +1,5 @@
 #!/bin/bash
 
+# Usage: while : ; do ./aws-rds-get-db-instance-events test1 | tr -d '"' | tail -5; echo "=============" ; echo; sleep 1; done
+
 aws rds describe-events | jq -r ".Events[] | select(.SourceIdentifier == \"$1\") | [.Date, .Message]| @csv" 

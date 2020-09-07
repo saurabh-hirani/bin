@@ -1,3 +1,5 @@
 #!/bin/bash
 
+# Usage: while :; do echo -n "$(date): " ; echo $(aws-rds-describe-db-instance-status test1);  sleep 1; done
+
 aws rds describe-db-instances | jq -r ".DBInstances[] | select(.DBInstanceIdentifier == \"$1\") | .DBInstanceStatus"
