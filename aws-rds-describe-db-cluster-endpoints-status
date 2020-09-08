@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Usage: while :; do echo "$(date -u): " ; echo -e "$(aws-rds-describe-db-cluster-endpoints-status adsk-monetization-cluster)"; echo "=========" ;   sleep 1; done
+
+
+aws rds describe-db-cluster-endpoints --db-cluster-identifier $1 | jq -r '.DBClusterEndpoints[] | [.Endpoint, .Status] | @csv'
+
+
