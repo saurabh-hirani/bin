@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Usage: while :; do echo -n "$(date -u): " ; echo $(aws-rds-describe-db-cluster-snaphsots-status hiranis-monetization-dev-env-aurora-snapshot-1) ;  sleep 1; done
+
+aws rds describe-db-cluster-snapshots |\
+jq -r ".DBClusterSnapshots[] | select(.DBClusterSnapshotIdentifier == \"$1\") | .Status"
