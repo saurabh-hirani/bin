@@ -10,6 +10,9 @@ add_header = os.environ.get('TABLE_ADD_HEADER', '1')
 sr_no = 1
 
 for row in sys.stdin:
+    row = row.strip()
+    if row == '':
+        continue
     if table is None:
         header_row = row.split(',')
         if add_header == '0':
