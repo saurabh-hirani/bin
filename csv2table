@@ -25,7 +25,7 @@ for row in sys.stdin:
                 header_row = ['sr_no'] + header_row
         table = prettytable.PrettyTable(header_row)
     else:
-        data_row = row.split(',')
+        data_row = row.split(',', len(header_row) - 1)
         if add_sr_no == '1':
             data_row = [sr_no] + data_row
         table.add_row(data_row)
