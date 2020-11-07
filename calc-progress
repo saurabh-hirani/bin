@@ -1,0 +1,6 @@
+#!/bin/bash
+
+total_parts=$1
+done_parts=$2
+
+echo "scale=2; ($done_parts * 100) / $total_parts" | bc
