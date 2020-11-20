@@ -1,0 +1,11 @@
+#!/bin/bash
+
+cmd=$1
+sleep_sec=$2
+
+while :; do 
+  clear
+  date
+  $cmd
+  sleep $sleep_sec
+done
