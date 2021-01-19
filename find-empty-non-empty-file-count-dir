@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo "empty: $(\find-empty-files-in-dir $1 | wc -l)"
+echo "non-empty: $(\find-non-empty-files-in-dir $1 | wc -l)"

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+usage="$0"
+
+aws sqs list-queues | jq -r '.QueueUrls[]' > /var/tmp/sqs-queue-urls.txt
