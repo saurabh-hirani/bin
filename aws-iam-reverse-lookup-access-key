@@ -1,0 +1,29 @@
+#!/bin/bash
+
+usage="$0 access_key"
+
+access_key="$1"
+
+aws iam list-users | jq -r '.Users[] | .UserName' > /var/tmp/iam-users.txt
+
+cust_func(){
+  user=$1
+  target_key=$2
+  for data in $(aws iam list-access-keys --user-name $user | jq -r '.AccessKeyMetadata[] | .UserName + ":" + .AccessKeyId'); do
+    found_key=$(echo $data | cut -f2 -d':')
+    if [[ "$found_key" == "$target_key" ]]; then
+      echo -e "Matched:$data"
+    else
+      username=$(echo $data | cut -f1 -d':')
+      echo "Skipping:$username"
+    fi
+  done
+}
+
+while IFS= read -r user; do
+  echo "Checking:$user"
+  cust_func "$user" "$access_key" &
+done < /var/tmp/iam-users.txt
+
+wait
+echo "All users checked."
