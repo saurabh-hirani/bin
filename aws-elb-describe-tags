@@ -11,3 +11,4 @@ fi
 lb_name=$1
 
 AWS_PROFILE=$AWS_PROFILE AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION aws elb describe-tags --load-balancer-name $lb_name | jq -c '.[][].Tags' | tee /tmp/tags-$lb_name.json
+
