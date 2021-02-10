@@ -6,15 +6,20 @@
 [[ -z "$RUNDECK_JOB_ID" ]] && RUNDECK_JOB_ID="$1"
 [[ -z "$RUNDECK_JOB_ID" ]] && echo "ERROR: RUNDECK_JOB_ID not set" && exit 1
 
+get_job_output() {
+  curl -s -X GET -H "X-Rundeck-Auth-Token: $RUNDECK_AUTH_TOKEN" \
+  -H 'Accept: application/json' \
+  "http://$RUNDECK_HOST/api/36/execution/$RUNDECK_JOB_ID/output"
+}
+
 while : ; do
-  job_output=$(curl -s -X GET -H "X-Rundeck-Auth-Token: $RUNDECK_AUTH_TOKEN" \
-               -H 'Accept: application/json' \
-               "http://$RUNDECK_HOST/api/36/execution/$RUNDECK_JOB_ID/output" | jq  -r '.entries[].log')
+  job_output=$(get_job_output)
+  log_entries="$(echo $job_output | jq  -r '.entries[].log')"
 
   if [[ -n "$MAX_LINES" ]] && [[ $MAX_LINES -gt 0 ]]; then
-      echo -e "$job_output" | tail -n $MAX_LINES
+      echo -e "$log_entries" | tail -n $MAX_LINES
   else
-      echo -e "$job_output"
+      echo -e "$log_entries"
   fi
   
   state_output=$(curl -s -X GET -H "X-Rundeck-Auth-Token: $RUNDECK_AUTH_TOKEN" \
@@ -23,11 +28,18 @@ while : ; do
   job_state_updated=$(echo -e "$state_output" | jq -r '.executionState')
 
   if [[ "$job_state_updated" != "RUNNING" ]]; then
-    echo "STATUS: Job completed. Exiting"
+    echo "STATUS: Rundeck job completed. Exiting"
+
     break
   fi
 
-  echo "==============="
+  echo "*************************************************************"
   sleep 10
 done
 
+job_output=$(get_job_output)
+echo $job_output | jq  -r '.entries[].log'
+
+echo
+echo "STATUS: View this job's output at http://$RUNDECK_HOST/project/$RUNDECK_PROJECT_ID/execution/show/$RUNDECK_JOB_ID"
+echo
