@@ -1,5 +1,4 @@
 #!/bin/bash
-set -x
 
 [[ -z "$RUNDECK_HOST" ]] && echo "ERROR: RUNDECK_HOST not set" && exit 1
 [[ -z "$RUNDECK_AUTH_TOKEN" ]] && echo "ERROR: RUNDECK_AUTH_TOKEN not set" && exit 1
