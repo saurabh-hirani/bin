@@ -1,10 +1,13 @@
 #!/bin/bash
+set -x
 
 [[ -z "$RUNDECK_HOST" ]] && echo "ERROR: RUNDECK_HOST not set" && exit 1
 [[ -z "$RUNDECK_AUTH_TOKEN" ]] && echo "ERROR: RUNDECK_AUTH_TOKEN not set" && exit 1
 
 [[ -z "$RUNDECK_JOB_ID" ]] && RUNDECK_JOB_ID="$1"
 [[ -z "$RUNDECK_JOB_ID" ]] && echo "ERROR: RUNDECK_JOB_ID not set" && exit 1
+
+[[ -z "$OUTPUT_FILE" ]] && OUTPUT_FILE="/dev/null"
 
 get_job_output() {
   curl -s -X GET -H "X-Rundeck-Auth-Token: $RUNDECK_AUTH_TOKEN" \
@@ -17,9 +20,9 @@ while : ; do
   log_entries="$(echo $job_output | jq  -r '.entries[].log')"
 
   if [[ -n "$MAX_LINES" ]] && [[ $MAX_LINES -gt 0 ]]; then
-      echo -e "$log_entries" | tail -n $MAX_LINES
+      echo -e "$log_entries" | tee $OUTPUT_FILE | tail -n $MAX_LINES
   else
-      echo -e "$log_entries"
+      echo -e "$log_entries" | tee $OUTPUT_FILE
   fi
   
   state_output=$(curl -s -X GET -H "X-Rundeck-Auth-Token: $RUNDECK_AUTH_TOKEN" \
@@ -29,7 +32,6 @@ while : ; do
 
   if [[ "$job_state_updated" != "RUNNING" ]]; then
     echo "STATUS: Rundeck job completed. Exiting"
-
     break
   fi
 
@@ -42,4 +44,5 @@ echo $job_output | jq  -r '.entries[].log'
 
 echo
 echo "STATUS: View this job's output at http://$RUNDECK_HOST/project/$RUNDECK_PROJECT_ID/execution/show/$RUNDECK_JOB_ID"
+echo "STATUS: Local output dumped in $OUTPUT_FILE"
 echo
