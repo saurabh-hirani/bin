@@ -17,7 +17,7 @@ for row in sys.stdin:
         header_row = row.split(',')
         if add_header == '0':
             n_cols = len(header_row)
-            if add_sr_no:
+            if add_sr_no == '1':
                 n_cols += 1
             header_row = ['h' + str(x) for x in range(n_cols)]
         else:
