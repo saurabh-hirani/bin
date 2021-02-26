@@ -1,0 +1,9 @@
+#!/bin/bash
+
+namespace="$1"
+pod_prefix="$2"
+
+pod_name=$(kubectl get pods --namespace $namespace | grep "^$pod_prefix" | head -1 | awk '{ print $1 }') 
+echo "following pod: $pod_name" 
+
+kubectl logs --namespace $namespace -f $pod_name

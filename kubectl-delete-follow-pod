@@ -1,0 +1,6 @@
+#!/bin/bash
+
+namespace="$1"
+pod_prefix="$2"
+
+kubectl-delete-pod $namespace $pod_prefix && sleep 5 && kubectl-follow-pod $namespace $pod_prefix
