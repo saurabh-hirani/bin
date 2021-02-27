@@ -1,0 +1,38 @@
+#!/bin/bash
+
+current_os=$(uname -a | awk '{ print $1 }')
+if [[ $current_os != "Linux" ]]; then
+    echo
+    echo "This script uses -d option of data - not available on non-Linux systems."
+    echo "Run 'aws cloudwatch get-metric-statistics' manually to verify metric flow"
+    echo
+    exit 0
+fi
+
+namespace="$1"
+metric_name="$2"
+period="$3"
+statistics="$4"
+dimensions="$5"
+
+time_range="$6"
+if [[ -z "$time_range" ]]; then
+    time_range="1 minute ago"
+fi
+
+while : ; do
+    time_now=$(date -u +"%Y-%m-%dT%H:%M:00Z")
+    time_1_min_ago=$(date -u +"%Y-%m-%dT%H:%M:00Z" -d "$time_range")
+
+    set -x
+    aws cloudwatch get-metric-statistics \
+        --namespace "$namespace" \
+        --metric-name "$metric_name" \
+        --start-time "$time_1_min_ago" \
+        --end-time "$time_now" \
+        --period "$period" --statistics "$statistics" \
+        --dimensions $dimensions
+    set +x
+    sleep 60
+done
+
