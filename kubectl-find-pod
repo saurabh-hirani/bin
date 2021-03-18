@@ -2,12 +2,13 @@
 
 namespace="$1"
 pod_prefix="$2"
-count="$3"
+count="100"
+index="$3"
 
 get_pods_output=$(kubectl get pods --namespace $namespace | grep "^$pod_prefix")
 
-if [[ -n $count ]]; then
+if [[ -z "$index" ]]; then
   echo -e "$get_pods_output" | head -$count | awk '{ print $1 }'
 else
-  echo -e "$get_pods_output" | awk '{ print $1 }'
+  echo -e "$get_pods_output" | head -$count | tail +"$index" | head -1 | awk '{ print $1 }'
 fi
