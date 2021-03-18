@@ -1,0 +1,13 @@
+#!/bin/bash
+
+namespace="$1"
+pod_prefix="$2"
+count="$3"
+
+get_pods_output=$(kubectl get pods --namespace $namespace | grep "^$pod_prefix")
+
+if [[ -n $count ]]; then
+  echo -e "$get_pods_output" | head -$count | awk '{ print $1 }'
+else
+  echo -e "$get_pods_output" | awk '{ print $1 }'
+fi
