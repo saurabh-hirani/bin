@@ -1,0 +1,6 @@
+#!/bin/bash
+
+aws ec2 describe-instances --filters Name=instance-state-name,Values=stopped | jq -rc '.Reservations[].Instances[].InstanceId' | while read instance_id; do
+  echo -n "$instance_id: "
+  aws ec2 describe-volumes --filters "Name=attachment.instance-id,Values=$instance_id" | jq -cr '[.Volumes[].Attachments[].VolumeId, .Volumes[].Size]'
+done
