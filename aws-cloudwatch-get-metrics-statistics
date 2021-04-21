@@ -20,19 +20,16 @@ if [[ -z "$time_range" ]]; then
     time_range="1 minute ago"
 fi
 
-while : ; do
-    time_now=$(date -u +"%Y-%m-%dT%H:%M:00Z")
-    time_1_min_ago=$(date -u +"%Y-%m-%dT%H:%M:00Z" -d "$time_range")
+time_now=$(date -u +"%Y-%m-%dT%H:%M:00Z")
+time_1_min_ago=$(date -u +"%Y-%m-%dT%H:%M:00Z" -d "$time_range")
 
-    set -x
-    aws cloudwatch get-metric-statistics \
-        --namespace "$namespace" \
-        --metric-name "$metric_name" \
-        --start-time "$time_1_min_ago" \
-        --end-time "$time_now" \
-        --period "$period" --statistics "$statistics" \
-        --dimensions $dimensions
-    set +x
-    sleep 60
-done
+set -x
+aws cloudwatch get-metric-statistics \
+    --namespace "$namespace" \
+    --metric-name "$metric_name" \
+    --start-time "$time_1_min_ago" \
+    --end-time "$time_now" \
+    --period "$period" --statistics "$statistics" \
+    --dimensions $dimensions
+set +x
 
