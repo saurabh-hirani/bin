@@ -1,0 +1,12 @@
+#!/bin/bash
+instance_id="$1"
+echo "instance_id: $instance_id"
+
+subnet_id=$(aws ec2 describe-instances --instance-ids $instance_id | jq -r '.Reservations[].Instances[].SubnetId')
+echo "subnet_id: $subnet_id"
+
+nat_id=$(aws ec2 describe-route-tables --filters Name=association.subnet-id,Values=$subnet_id | jq -r '.RouteTables[].Routes[] | select(.NatGatewayId != null) | .NatGatewayId')
+echo "nat_id: $nat_id"
+
+nat_public_ip=$(aws ec2 describe-nat-gateways --nat-gateway-ids $nat_id | jq -r '.NatGateways[].NatGatewayAddresses[].PublicIp')
+echo "nat_public_ip: $nat_public_ip"
