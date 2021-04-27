@@ -1,0 +1,13 @@
+#!/bin/bash
+
+default_format="%Y-%m-%dT%H:%M:%SZ"
+curr_date="$(date +'%Y-%m-%d')"
+curr_time="$(date +'%H:%M:%S')"
+
+target_time="${1:-$curr_time}"
+target_format="${2:-$default_format}"
+
+[[ $target_format == "" ]] && target_format=$default_format
+[[ $target_time == "" ]] && target_time=$curr_time
+
+date -u -d @$(date -d "$curr_date $target_time" +%s) +$target_format
