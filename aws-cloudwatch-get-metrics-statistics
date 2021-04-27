@@ -14,22 +14,29 @@ metric_name="$2"
 period="$3"
 statistics="$4"
 dimensions="$5"
-
 time_range="$6"
+end_time="$7"
+
+if [[ -z "$end_time" ]]; then
+  start_time=$(date -u +"%Y-%m-%dT%H:%M:00Z" -d "$time_range")
+  end_time=$(date -u +"%Y-%m-%dT%H:%M:00Z")
+else
+  start_time=$time_range
+fi
+
 if [[ -z "$time_range" ]]; then
     time_range="1 minute ago"
 fi
 
-time_now=$(date -u +"%Y-%m-%dT%H:%M:00Z")
-time_1_min_ago=$(date -u +"%Y-%m-%dT%H:%M:00Z" -d "$time_range")
+[[ "$DEBUG" == "1" ]] && >&2 echo "STATUS:start_time:$start_time" 
+[[ "$DEBUG" == "1" ]] && >&2 echo "STATUS:end_time:$end_time" 
 
-set -x
+[[ "$DEBUG" == "1" ]] && set -x
 aws cloudwatch get-metric-statistics \
     --namespace "$namespace" \
     --metric-name "$metric_name" \
-    --start-time "$time_1_min_ago" \
-    --end-time "$time_now" \
+    --start-time "$start_time" \
+    --end-time "$end_time" \
     --period "$period" --statistics "$statistics" \
     --dimensions $dimensions
-set +x
 
