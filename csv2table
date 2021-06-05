@@ -2,11 +2,14 @@
 
 import os
 import sys
+import operator
 import prettytable
 
 table = None
 add_sr_no = os.environ.get('TABLE_ADD_SR_NO', '0')
-add_header = os.environ.get('TABLE_ADD_HEADER', '1')
+has_header = os.environ.get('TABLE_HAS_HEADER', '0')
+align = os.environ.get('TABLE_ALIGN', 'l')
+sortby_col = os.environ.get('SORT_BY')
 sr_no = 1
 
 for row in sys.stdin:
@@ -15,7 +18,7 @@ for row in sys.stdin:
         continue
     if table is None:
         header_row = row.split(',')
-        if add_header == '0':
+        if has_header == '0':
             n_cols = len(header_row)
             if add_sr_no == '1':
                 n_cols += 1
@@ -31,4 +34,8 @@ for row in sys.stdin:
         table.add_row(data_row)
         sr_no += 1
 
-print(table)
+if table:
+    table.align = align
+    if sortby_col:
+        table.sortby = sortby_col
+    print(table)
