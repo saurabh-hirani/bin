@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -e
+
+lbs="$1"
+
+if [[ -z "$lbs" ]]; then
+  lbs=$(aws elb describe-load-balancers | jq  -r '.LoadBalancerDescriptions[].LoadBalancerName')
+  if [[ -z "$lbs" ]]; then
+    echo "STATUS: Did not find any load balancers" >&2
+    exit 1
+  fi
+fi
+
+for lb in $lbs; do
+  if [[ -n "$DUMP_TAGS" ]] &&  [[ "$DUMP_TAGS" == "1" ]]; then
+    tags=$(aws elb describe-tags --load-balancer-name "$lb" | jq -cr '.TagDescriptions[].Tags[] | [.Key, .Value] | @csv' | tr -d '"' | tr ',' '=')
+    if [[ -n "$tags" ]]; then
+      for tag in $tags; do
+        echo "elb: $lb: tag: $tag"
+      done
+    else
+      echo "STATUS: $lb: No tags" >&2
+    fi
+  fi
+  echo
+done
