@@ -1,0 +1,19 @@
+#!/bin/bash
+
+lbs=$*
+
+if [[ -z "$lbs" ]]; then
+  lbs=$(aws elbv2 describe-load-balancers | jq -rc '.LoadBalancers[].LoadBalancerArn')
+  if [[ -z "$lbs" ]]; then
+    echo "STATUS: Did not find any load balancers" >&2
+    exit 1
+  fi
+fi
+
+for lb in $lbs; do
+  output=$(aws elbv2 describe-load-balancer-attributes --load-balancer-arn $lb | jq -rc '.Attributes[] | [.Key, .Value] | @csv' | sed 's/"//g ; s/,/=/g')
+  echo "$output" | while read -r line; do
+    echo "alb:$lb attr:$line"
+  done
+  echo
+done

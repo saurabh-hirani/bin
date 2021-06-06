@@ -11,13 +11,14 @@ if [[ -z "$lbs" ]]; then
 fi
 
 for lb in $lbs; do
-  tags=$(aws elb describe-tags --load-balancer-name "$lb" | jq -cr '.TagDescriptions[].Tags[] | [.Key, .Value] | @csv' | tr -d '"' | tr ',' '=')
-  if [[ -n "$tags" ]]; then
-    for tag in $tags; do
-      echo "elb:$lb tag:$tag"
+  output=$(aws elb describe-load-balancer-attributes --load-balancer-name $lb | jq '.LoadBalancerAttributes')
+  if command -v gron >/dev/null; then
+    echo "$output" | gron | while read -r line; do
+      echo "elb:$lb attr:$line"
     done
   else
-    echo "STATUS: $lb: No tags" >&2
+    echo "======= $lb ==========="
+    echo "$output"
   fi
   echo
 done

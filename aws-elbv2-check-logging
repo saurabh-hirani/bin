@@ -10,9 +10,9 @@ if [[ -z "$AWS_DEFAULT_REGION" ]]; then
 fi
 
 if [[ -z "$lbs" ]]; then
-  lbs=$(aws elb describe-load-balancers | jq  -r '.LoadBalancerDescriptions[].LoadBalancerName')
+  lbs=$(aws elbv2 describe-load-balancers | jq -rc '.LoadBalancers[].LoadBalancerArn')
   if [[ -z "$lbs" ]]; then
-    echo "STATUS: Did not find any ELBs" >&2
+    echo "STATUS: Did not find any ALBs" >&2
     exit 1
   fi
 fi
@@ -22,24 +22,25 @@ curr_month=$(date +%m)
 curr_day=$(date +%d)
 aws_account_id=$(aws sts get-caller-identity | jq -r '.Account')
 
-s3_ls_base_dir='/tmp/elb-s3-bucket-ls/'
-s3_cp_base_dir='/tmp/elb-s3-bucket-cp/'
+s3_ls_base_dir='/tmp/alb-s3-bucket-ls/'
+s3_cp_base_dir='/tmp/alb-s3-bucket-cp/'
 filename=$(basename $0)
 
 for lb in $lbs; do
   # Check S3 bucket logging enabled
-  access_log_attr=$(aws elb describe-load-balancer-attributes --load-balancer-name "$lb" | jq '.LoadBalancerAttributes.AccessLog')
-  status=$(echo "$access_log_attr" | jq '.Enabled')
-  echo "elb=$lb access_log_enabled=$status"
+  attrs=$(aws elbv2 describe-load-balancer-attributes --load-balancer-arn "$lb" | jq -c '.Attributes[]')
+  status=$(echo "$attrs" | jq -rc --arg key "access_logs.s3.enabled" 'select(.Key==$key) | .Value')
+
+  echo "alb=$lb access_log_enabled=$status"
   if [[ $status == "false" ]]; then
     echo
     continue
   fi
 
-  s3_bucket=$(echo "$access_log_attr" | jq -r '.S3BucketName')
-  s3_bucket_prefix=$(echo "$access_log_attr" | jq -r '.S3BucketPrefix')
-  emit_interval=$(echo "$access_log_attr" | jq '.EmitInterval')
-  echo "elb=$lb s3_bucket=$s3_bucket s3_bucket_prefix=$s3_bucket_prefix emit_interval=$emit_interval"
+  s3_bucket=$(echo "$attrs" | jq -rc --arg key "access_logs.s3.bucket" 'select(.Key==$key) | .Value')
+  s3_bucket_prefix=$(echo "$attrs" | jq -rc --arg key "access_logs.s3.prefix" 'select(.Key==$key) | .Value')
+
+  echo "alb=$lb s3_bucket=$s3_bucket s3_bucket_prefix=$s3_bucket_prefix"
 
   # Check List access for target S3 bucket
   s3_bucket_uri="s3://$s3_bucket"
@@ -48,15 +49,15 @@ for lb in $lbs; do
   fi
 
   s3_bucket_uri="s3://$s3_bucket/$s3_bucket_prefix/AWSLogs/$aws_account_id/elasticloadbalancing/$AWS_DEFAULT_REGION/$curr_year/$curr_month/$curr_day"
-  echo "elb=$lb s3_bucket_uri=$s3_bucket_uri"
+  echo "alb=$lb s3_bucket_uri=$s3_bucket_uri"
 
   s3_ls_output_file="$s3_ls_base_dir/$s3_bucket/$s3_bucket_prefix/ls.txt"
   mkdir -p "$(dirname "$s3_ls_output_file")"
 
   if aws s3 ls "$s3_bucket_uri/" > "$s3_ls_output_file" 2>>"/tmp/$filename-err.log"; then
-    echo "elb=$lb list_access_enabled=true sample_output=$s3_ls_output_file"
+    echo "alb=$lb list_access_enabled=true sample_output=$s3_ls_output_file"
   else
-    echo "elb=$lb list_access_enabled=false"
+    echo "alb=$lb list_access_enabled=false"
     echo
     continue
   fi
@@ -64,15 +65,15 @@ for lb in $lbs; do
   # Check Copy access for target S3 bucket
   log_file="$(tail -1 "$s3_ls_output_file" | awk '{ print $NF }')"
   sample_log_uri="$s3_bucket_uri/$log_file"
-  echo "elb=$lb sample_log_uri=$sample_log_uri"
+  echo "alb=$lb sample_log_uri=$sample_log_uri"
 
   s3_cp_output_file="$s3_cp_base_dir/$s3_bucket/$s3_bucket_prefix/$log_file"
   mkdir -p "$(dirname "$s3_cp_output_file")"
 
   if aws s3 cp "$sample_log_uri" "$s3_cp_output_file" >/dev/null 2>>"/tmp/$filename-err.log"; then
-    echo "elb=$lb cp_access_enabled=true sample_output=$s3_cp_output_file"
+    echo "alb=$lb cp_access_enabled=true sample_output=$s3_cp_output_file"
   else
-    echo "elb=$lb cp_access_enabled=false"
+    echo "alb=$lb cp_access_enabled=false"
   fi
   echo
 done
