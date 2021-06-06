@@ -83,13 +83,14 @@ def generate_vertical(add_sr_no, has_header, align, sortby_col, reverse_sort, te
         data_rows = input_rows
 
     header_tokens = [x.strip() for x in header_row.split(",")]
+    table_rows = []
     for row in data_rows:
         data_tokens = row.split(",", len(header_tokens) - 1)
         input_rows = ["key,value"]
         for header_token, data_token in zip(header_tokens, data_tokens):
             input_rows.append(header_token + "," + data_token)
-        print(generate_horizontal(add_sr_no, 1, align, sortby_col, reverse_sort, textwrap_len, input_rows))
-    return ""
+        table_rows.append(generate_horizontal(add_sr_no, 1, align, sortby_col, reverse_sort, textwrap_len, input_rows))
+    return "\n".join(table_rows)
 
 
 def generate_table():
