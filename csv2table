@@ -1,41 +1,116 @@
 #!/usr/bin/env python3
 
+""" Input: CSV Output: Horizontal/Vertical Python PrettyTable """
+
 import os
 import sys
-import operator
+import textwrap
 import prettytable
 
-table = None
-add_sr_no = os.environ.get('TABLE_ADD_SR_NO', '0')
-has_header = os.environ.get('TABLE_HAS_HEADER', '0')
-align = os.environ.get('TABLE_ALIGN', 'l')
-sortby_col = os.environ.get('SORT_BY')
-sr_no = 1
 
-for row in sys.stdin:
-    row = row.strip()
-    if row == '':
-        continue
-    if table is None:
-        header_row = row.split(',')
-        if has_header == '0':
-            n_cols = len(header_row)
-            if add_sr_no == '1':
-                n_cols += 1
-            header_row = ['h' + str(x) for x in range(n_cols)]
+def generate_horizontal(add_sr_no, has_header, align, sortby_col, reverse_sort, textwrap_len, input_rows=None):
+    """Generate horizontal table"""
+    table = None
+    header_row = []
+    len_first_row = 0
+    sr_no = 0
+
+    if not input_rows:
+        input_rows = sys.stdin.readlines()
+
+    for row in input_rows:
+        row = row.strip()
+
+        # Skip empty rows
+        if row == "":
+            continue
+
+        if not table:
+            # First row decides number of columns
+            data_row = row.split(",")
+            len_first_row = len(data_row)
         else:
-            if add_sr_no == '1':
-                header_row = ['sr_no'] + header_row
-        table = prettytable.PrettyTable(header_row)
-    else:
-        data_row = row.split(',', len(header_row) - 1)
-        if add_sr_no == '1':
-            data_row = [sr_no] + data_row
-        table.add_row(data_row)
+            data_row = row.split(",", len_first_row - 1)
+
+        if textwrap_len > 0:
+            data_row = [textwrap.fill(str(x), textwrap_len) for x in data_row]
+
+        # Intialize when parsing the first row
+        if not table:
+            if has_header:
+                # First row is header
+                header_row = data_row
+                if add_sr_no:
+                    header_row = ["sr_no"] + data_row
+                data_row = []
+            else:
+                # Generate header and use the first row as data row
+                n_cols = len(data_row)
+                if add_sr_no:
+                    n_cols += 1
+                    sr_no += 1
+                header_row = ["h" + str(x) for x in range(n_cols)]
+            table = prettytable.PrettyTable(header_row)
+
+        if data_row:
+            if add_sr_no:
+                data_row = [str(sr_no)] + data_row
+            table.add_row(data_row)
+
         sr_no += 1
 
-if table:
-    table.align = align
-    if sortby_col:
-        table.sortby = sortby_col
-    print(table)
+    if table:
+        table.align = align
+        args = {}
+        if sortby_col:
+            table.sortby = sortby_col
+        if reverse_sort:
+            args = {"reversesort": True}
+        return table.get_string(**args)
+
+
+def generate_vertical(add_sr_no, has_header, align, sortby_col, reverse_sort, textwrap_len, input_rows=None):
+    """Generate vertical table"""
+    if not input_rows:
+        input_rows = sys.stdin.readlines()
+
+    header_row = []
+    if has_header:
+        header_row = input_rows[0]
+        data_rows = input_rows[1:]
+    else:
+        header_row = ["h" + str(x) for x in range(len(input_rows[0]))]
+        data_rows = input_rows
+
+    header_tokens = [x.strip() for x in header_row.split(",")]
+    for row in data_rows:
+        data_tokens = row.split(",", len(header_tokens) - 1)
+        input_rows = ["key,value"]
+        for header_token, data_token in zip(header_tokens, data_tokens):
+            input_rows.append(header_token + "," + data_token)
+        print(generate_horizontal(add_sr_no, 1, align, sortby_col, reverse_sort, textwrap_len, input_rows))
+    return ""
+
+
+def generate_table():
+    """Read stdin and generate table"""
+    orient = os.environ.get("TABLE_ORIENT", "h")
+    add_sr_no = bool(int(os.environ.get("TABLE_ADD_SR_NO", 0)))
+    has_header = bool(int(os.environ.get("TABLE_HAS_HEADER", 0)))
+    align = os.environ.get("TABLE_ALIGN", "l")
+    sortby_col = os.environ.get("SORT_BY")
+    reverse_sort = bool(int(os.environ.get("REVERSE_SORT", "0")))
+    textwrap_len = int(os.environ.get("ROW_TEXTWRAP_LEN", "0"))
+
+    if orient == "h":
+        return generate_horizontal(add_sr_no, has_header, align, sortby_col, reverse_sort, textwrap_len)
+    return generate_vertical(add_sr_no, has_header, align, sortby_col, reverse_sort, textwrap_len)
+
+
+def main():
+    """Main function"""
+    print(generate_table())
+
+
+if __name__ == "__main__":
+    sys.exit(main())
