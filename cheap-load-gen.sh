@@ -30,7 +30,7 @@ while : ; do
   now_time=$(date +%s)
   total_time=$(echo "($now_time - $start_time)" | bc)
   rps=$(echo "scale=2; $total_requests / $total_time" | bc)
-  rpm=$(echo "scale=2; $total_requests / $total_time * 60" | bc)
+  rpm=$(echo "scale=2; $rps * 60" | bc)
   echo "$(date): total_time=${total_time}s total_requests=$total_requests rps=${rps} rpm=${rpm}"
 
   echo
