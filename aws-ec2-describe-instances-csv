@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "az,instance_id,instance_state,launch_time,public_or_private,tags"
+echo "az,instance_id,instance_type,instance_state,launch_time,public_or_private,tags"
 aws ec2 describe-instances | jq -rc '.Reservations[].Instances[]
   | [.Placement.AvailabilityZone,
      .InstanceId, .InstanceType, .State.Name,
