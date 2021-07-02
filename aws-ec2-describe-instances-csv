@@ -1,9 +1,10 @@
 #!/bin/bash
 
-echo "az,instance_id,instance_state,public_or_private,tags"
+echo "az,instance_id,instance_state,launch_time,public_or_private,tags"
 aws ec2 describe-instances | jq -rc '.Reservations[].Instances[]
   | [.Placement.AvailabilityZone,
-     .InstanceId, .State.Name,
+     .InstanceId, .InstanceType, .State.Name,
+     .LaunchTime,
      (.PublicIpAddress | if .==null then "Private" else "Public" end),
      (.Tags[] | [.Key, .Value] | join("="))]
   | @csv' | sed 's/"//g'
