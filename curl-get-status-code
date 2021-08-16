@@ -1,0 +1,3 @@
+#!/bin/bash
+
+curl -X GET -s -o /dev/null -w "%{http_code}\n" $1
