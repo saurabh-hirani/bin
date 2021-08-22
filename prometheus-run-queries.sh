@@ -23,6 +23,8 @@ cat "$queries_file" | grep -v '#' | while read -r query; do
   echo "==============="
   echo "running: $query"
   encoded_query=$(echo "$query" | jq -SRr @uri)
+  set -x
   curl -s "$prometheus_conn_str/api/v1/query_range?start=$start_time&end=$end_time&step=60s&query=$encoded_query" | jq
+  set +x
   echo "==============="
 done
