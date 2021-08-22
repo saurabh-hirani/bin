@@ -1,0 +1,4 @@
+#!/bin/bash
+
+dig ns $1 | grep '\tNS\t' | awk '{ print $NF }' | sort
+

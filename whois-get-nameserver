@@ -1,0 +1,4 @@
+#!/bin/bash
+
+whois $1 | grep 'Name Server' | tr '[:upper:]' '[:lower:]' | cut -f3 -d' ' | sort
+
