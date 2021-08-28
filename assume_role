@@ -1,0 +1,27 @@
+#!/bin/bash
+set -e
+
+assume_role_arn="$1"
+
+output_file="/var/tmp/envvars.sh"
+
+# Assume the role
+echo "Assuming role $assume_role_arn"
+content=$(aws sts assume-role --role-arn $assume_role_arn --role-session-name AWSCLI-Session)
+
+# Dump creds in output file
+echo export AWS_ACCESS_KEY_ID="$(echo -e $content | jq -r '.Credentials.AccessKeyId')" > "$output_file"
+echo export AWS_SECRET_ACCESS_KEY="$(echo -e $content | jq -r '.Credentials.SecretAccessKey')" >> "$output_file"
+echo export AWS_SESSION_TOKEN="$(echo -e $content | jq -r '.Credentials.SessionToken')" >> "$output_file"
+
+# Clear env to ensure no other variables are set
+unset AWS_PROFILE
+unset AWS_ACCESS_KEY_ID
+unset AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN
+
+# Source new credentials
+echo "Sourcing assumed role creds from $output_file"
+source $output_file
+
+echo "After: $(aws sts get-caller-identity | jq -r '.Arn')"
