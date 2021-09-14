@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Sample - get instances from volumes script
+# aws-ec2-describe-instance-volumes.sh "Name=tag:eks:nodegroup-name,Values=test" "Name=instance-state-name,Values=running" | cut -f1 -d',' | while read line; do aws-ec2-find-nat-ip $line; done | grep nat_public_ip | cut -f2 -d':' | sort |  uniq
+
 instance_id="$1"
 echo "instance_id: $instance_id"
 
