@@ -2,7 +2,7 @@
 
 # local-time-to-utc "12:00:00"
 # local-time-to-utc $(date -d '24 hours ago' | awk '{ print $5 }'  | cut -f1,2 -d':')
-
+# local-time-to-utc 16:00:00 '%s'
 
 default_format="%Y-%m-%dT%H:%M:%SZ"
 curr_date="$(date +'%Y-%m-%d')"
