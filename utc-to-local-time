@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# utc-to-local-time "2021-08-01" "12:00:00"
+# utc-to-local-time '' $(date -d '24 hours ago' | awk '{ print $5 }'  | cut -f1,2 -d':')
+# utc-to-local-time '' 16:00:00 '%s'
+
+default_format="%Y-%m-%dT%H:%M:%SZ"
+curr_date="$(date +'%Y-%m-%d')"
+curr_time="$(date +'%H:%M:%S')"
+
+target_date="${1:-$curr_date}"
+target_time="${2:-$curr_time}"
+target_format="${3:-$default_format}"
+
+[[ $target_format == "" ]] && target_format=$default_format
+[[ $target_time == "" ]] && target_time=$curr_time
+
+date -d @$(date -u -d "$target_date $target_time" +%s) +$target_format
