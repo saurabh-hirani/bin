@@ -1,4 +1,9 @@
 #!/bin/bash
+
+### Sample usage
+# seq 1 100 | ./percentile.sh $(seq 1 10 | while read line; do echo "$line * 10" | bc; done) | termgraph
+### Sample usage
+
 tmpfile=$(mktemp)
 
 cat - | sort -n > "$tmpfile"
