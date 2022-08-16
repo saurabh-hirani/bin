@@ -7,6 +7,7 @@ import sys
 import logging
 import arrow
 import json
+import pytz
 from datetime import datetime
 from urllib.parse import quote as urlquote
 import requests
@@ -97,14 +98,17 @@ def update_args(args):
     with open(args["query_file"], "r") as fd:
         args["queries"] = [x.strip() for x in fd.readlines() if "#" not in x]
 
-    # Dump time in UTC if required
-    # end_timestamp_fmt = datetime.fromtimestamp(args["end"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args["start_fmt_local"] = datetime.fromtimestamp(args["start"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args["end_fmt_local"] = datetime.fromtimestamp(args["end"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    args["start_fmt"] = datetime.fromtimestamp(args["start"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    args["end_fmt"] = datetime.fromtimestamp(args["end"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    logging.info("query: start local: %s", args["start_fmt_local"])
+    logging.info("query: end   local: %s", args["end_fmt_local"])
 
-    logging.info("query: start: %s", args["start_fmt"])
-    logging.info("query: end  : %s", args["end_fmt"])
+    args["start_fmt"] = datetime.fromtimestamp(args["start"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args["end_fmt"] = datetime.fromtimestamp(args["end"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    logging.info("query: start utc: %s", args["start_fmt"])
+    logging.info("query: end   utc: %s", args["end_fmt"])
 
     return True
 
