@@ -8,7 +8,7 @@ import logging
 import arrow
 import json
 import pytz
-from datetime import datetime
+import datetime
 from urllib.parse import quote as urlquote
 import requests
 import curlify
@@ -98,17 +98,17 @@ def update_args(args):
     with open(args["query_file"], "r") as fd:
         args["queries"] = [x.strip() for x in fd.readlines() if "#" not in x]
 
-    args["start_fmt_local"] = datetime.fromtimestamp(args["start"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    args["end_fmt_local"] = datetime.fromtimestamp(args["end"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args["start_fmt"] = datetime.datetime.fromtimestamp(args["start"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args["end_fmt"] = datetime.datetime.fromtimestamp(args["end"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args["start_fmt_local"] = datetime.datetime.fromtimestamp(args["start"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    args["end_fmt_local"] = datetime.datetime.fromtimestamp(args["end"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    delta = str(datetime.timedelta(seconds=(args["end"] - args["start"])))
 
     logging.info("query: start local: %s", args["start_fmt_local"])
     logging.info("query: end   local: %s", args["end_fmt_local"])
-
-    args["start_fmt"] = datetime.fromtimestamp(args["start"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    args["end_fmt"] = datetime.fromtimestamp(args["end"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-
-    logging.info("query: start utc: %s", args["start_fmt"])
-    logging.info("query: end   utc: %s", args["end_fmt"])
+    logging.info("query: start utc  : %s", args["start_fmt"])
+    logging.info("query: end   utc  : %s", args["end_fmt"])
+    logging.info("query: time_range : %s", delta)
 
     return True
 
@@ -133,7 +133,8 @@ def query_url(args):
         }
         headers.update(args["url_headers"])
         response = requests.get(url, params=params, headers=headers)
-        logging.info(curlify.to_curl(response.request))
+        curl_cmd = curlify.to_curl(response.request).replace("-H 'Accept-Encoding: gzip, deflate'", "")
+        logging.info("curl command: %s", curl_cmd)
         if response.status_code != 200:
             query_output["response"] = response.text
             logging.error(
@@ -143,7 +144,7 @@ def query_url(args):
                 response.text,
             )
         query_output["response"] = response.json()
-        print(json.dumps(query_output, indent=2))
+        print(json.dumps(query_output, indent=2, default=str))
 
 
 def main():
