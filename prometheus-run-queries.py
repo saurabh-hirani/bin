@@ -14,28 +14,7 @@ now=11:30:00
 start=11:20:00
 end=11:30:00
 
-2. If --lookback and --end specified => start = end - lookback
-
-
-prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
-                          -e $(date +%s -d "10 minutes ago") -l '20 minutes ago' 2>&1 | less
-
-now=11:30:00
-start=11:10:00
-end=11:20:00
-
-3. If --lookback and --start specified => start = start - lookback, end = now
-
-
-prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
-                          -s $(date +%s -d "10 minutes ago") -l '20 minutes ago' 2>&1 | less
-
-now=11:30:00
-start=11:00:00
-end=11:30:00
-
-
-4. If only --start specified => start = start, end = now
+2. If only --start specified => start = start, end = now
 
 prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
                           -s $(date +%s -d "10 minutes ago") 2>&1 | less
@@ -44,7 +23,7 @@ now=11:30:00
 start=11:20:00
 end=11:30:00
 
-5. If --start and --end specified => start = start, end = end
+3. If --start and --end specified => start = start, end = end
 
 prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
                           -s $(date +%s -d "11 minutes ago") -e $(date +%s -d "10 minutes ago") 2>&1 | less
@@ -53,7 +32,8 @@ now=11:30:00
 start=11:19:00
 end=11:20:00
 
-6. For everything else, raise an error.
+
+4. Ignore any other combinations.
 """
 
 import os
@@ -134,7 +114,6 @@ def update_args(args):
     if args["end"] != -1:
         args["input_end_fmt_local"] = datetime.datetime.fromtimestamp(args["end"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    # If --start, --end, --lookback empty => error
     if args["start"] == -1 and args["end"] == -1 and args["lookback"] == -1:
         logging.error("Empty --start, --end, --lookback.")
         return False
@@ -142,25 +121,11 @@ def update_args(args):
     if args["lookback"] != -1:
         lookback_seconds = (now_obj - now_obj.dehumanize(args["lookback"])).total_seconds()
 
-    # 1. If only --lookback specified => start = now - lookback, end = now
     if args["start"] == -1 and args["end"] == -1:
         args["start"] = now_obj_timestmap - lookback_seconds
         args["end"] = now_obj_timestmap
 
-    # 2. If --lookback and --end specified => start = end - lookback
-    if args["start"] == -1 and args["end"] != -1:
-        if args["lookback"] == -1:
-            logging.error(
-                "Empty --start, empty --lookback, non-emtpy --end. If --start is empty --lookback should not be empty"
-            )
-            return False
-        args["start"] = args["end"] - lookback_seconds
-
-    # 3. If --lookback and --start specified => start = start - lookback, end = now
-    # 4. If only --start specified => start = start, end = now
     if args["start"] != -1 and args["end"] == -1:
-        if args["lookback"] != -1:
-            args["start"] = args["start"] - lookback_seconds
         args["end"] = now_obj_timestmap
 
     if args["start"] > args["end"]:
