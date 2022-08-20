@@ -1,17 +1,5 @@
 #!/usr/bin/env python
 
-import os
-import argparse
-import sys
-import logging
-import arrow
-import json
-import pytz
-import datetime
-from urllib.parse import quote as urlquote
-import requests
-import curlify
-
 """
 Run prometheus queries from the cli.
 
@@ -67,6 +55,18 @@ end=11:20:00
 
 6. For everything else, raise an error.
 """
+
+import os
+import argparse
+import sys
+import logging
+import arrow
+import json
+import pytz
+import datetime
+from urllib.parse import quote as urlquote
+import requests
+import curlify
 
 
 def load_args():
