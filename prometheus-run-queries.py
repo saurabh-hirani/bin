@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os
-import time
 import argparse
 import sys
 import logging
@@ -79,13 +78,13 @@ def load_args():
     parser.add_argument(
         "--start",
         "-s",
-        help="start timestamp for metrics query - have to specify with --end. Cannot use with --lookback",
+        help="start timestamp for metrics query - have to specify with --end",
         default=-1,
     )
     parser.add_argument(
         "--end",
         "-e",
-        help="end timestamp for metrics query - have to specify with --start. Can use with --lookback to derive --start value.",
+        help="end timestamp for metrics query - have to specify with --start.",
         default=-1,
     )
     parser.add_argument("--url-headers", help="URL headers json str", required=False, default="{}")
