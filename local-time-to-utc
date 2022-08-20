@@ -9,10 +9,12 @@ curr_date="$(date +'%Y-%m-%d')"
 curr_time="$(date +'%H:%M:%S')"
 
 target_date="${1:-$curr_date}"
-target_time="${2:-$curr_time}"
-target_format="${3:-$default_format}"
+[[ $target_date == "" ]] && target_date=$curr_date
 
-[[ $target_format == "" ]] && target_format=$default_format
+target_time="${2:-$curr_time}"
 [[ $target_time == "" ]] && target_time=$curr_time
+
+target_format="${3:-$default_format}"
+[[ $target_format == "" ]] && target_format=$default_format
 
 date -u -d @$(date -d "$target_date $target_time" +%s) +$target_format

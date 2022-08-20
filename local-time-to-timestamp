@@ -1,0 +1,6 @@
+#!/bin/bash
+
+target_date="$1"
+target_time="$2"
+
+date -d @$(date -d "$target_date $target_time" +%s) +%s

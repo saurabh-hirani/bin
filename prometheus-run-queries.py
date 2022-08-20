@@ -13,26 +13,61 @@ from urllib.parse import quote as urlquote
 import requests
 import curlify
 
-# TODO
-# 1. Add --split to slice --start and --end time diff in different slices.
+"""
+Run prometheus queries from the cli.
 
-# Sample usage
-# Run query from "10 minutes ago" to now
-# python prometheus-run-queries.py -u http://prometheus-url -q /var/tmp/queries.txt -l '10 minutes ago'
+Order of evaluation
 
-# Run query from specific time range - between now-10m and now-11m
-# python prometheus-run-queries.py -u http://prometheus-url -q /var/tmp/queries.txt \
-#                                  -s $(date +%s -d "10 minutes ago") -e $(date +%s -d "11 minutes ago")
+1. If only --lookback specified => start = now - lookback, end = now
 
-# Run query from "start_time - 10 minutes ago" to start_time
-# python prometheus-run-queries.py -u http://prometheus-url -q /var/tmp/queries.txt \
-#                                  -s $(date +%s -d "10 minutes ago") -l '20 minutes ago'
+prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
+                          -l '10 minutes ago' 2>&1 | less
 
-# Precedence
-# 1. If only --lookback specified, use that.
-# 2. If --lookback and --start specified, use that.
-# 3. If --start and --end specified, use that.
-# 4. If --start, --end and --lookback specified, throw error.
+now=11:30:00
+start=11:20:00
+end=11:30:00
+
+2. If --lookback and --end specified => start = end - lookback
+
+
+prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
+                          -e $(date +%s -d "10 minutes ago") -l '20 minutes ago' 2>&1 | less
+
+now=11:30:00
+start=11:10:00
+end=11:20:00
+
+3. If --lookback and --start specified => start = start - lookback, end = now
+
+
+prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
+                          -s $(date +%s -d "10 minutes ago") -l '20 minutes ago' 2>&1 | less
+
+now=11:30:00
+start=11:00:00
+end=11:30:00
+
+
+4. If only --start specified => start = start, end = now
+
+prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
+                          -s $(date +%s -d "10 minutes ago") 2>&1 | less
+
+now=11:30:00
+start=11:20:00
+end=11:30:00
+
+5. If --start and --end specified => start = start, end = end
+
+prometheus-run-queries.py -u $test_prometheus_url -f /var/tmp/queries.txt \
+                          -s $(date +%s -d "11 minutes ago") -e $(date +%s -d "10 minutes ago") 2>&1 | less
+
+now=11:30:00
+start=11:19:00
+end=11:20:00
+
+6. For everything else, raise an error.
+"""
 
 
 def load_args():
@@ -50,7 +85,7 @@ def load_args():
     parser.add_argument(
         "--end",
         "-e",
-        help="end timestamp for metrics query - have to specify with --start. Cannot use with --lookback",
+        help="end timestamp for metrics query - have to specify with --start. Can use with --lookback to derive --start value.",
         default=-1,
     )
     parser.add_argument("--url-headers", help="URL headers json str", required=False, default="{}")
@@ -86,14 +121,52 @@ def validate_args(args):
 def update_args(args):
     """Update args after interpreting input"""
     lookback_seconds = 0
+    now_obj = arrow.now()
+    now_obj_fmt = now_obj.datetime.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    now_obj_timestmap = now_obj.datetime.timestamp()
+
+    args["input_start_fmt_local"] = -1
+    args["input_end_fmt_local"] = -1
+
+    if args["start"] != -1:
+        args["input_start_fmt_local"] = datetime.datetime.fromtimestamp(args["start"]).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
+        )
+    if args["end"] != -1:
+        args["input_end_fmt_local"] = datetime.datetime.fromtimestamp(args["end"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    # If --start, --end, --lookback empty => error
+    if args["start"] == -1 and args["end"] == -1 and args["lookback"] == -1:
+        logging.error("Empty --start, --end, --lookback.")
+        return False
+
     if args["lookback"] != -1:
-        now_obj = arrow.now()
         lookback_seconds = (now_obj - now_obj.dehumanize(args["lookback"])).total_seconds()
-        if args["start"] == -1:
-            args["end"] = int(time.time())
-        else:
-            args["end"] = args["start"]
+
+    # 1. If only --lookback specified => start = now - lookback, end = now
+    if args["start"] == -1 and args["end"] == -1:
+        args["start"] = now_obj_timestmap - lookback_seconds
+        args["end"] = now_obj_timestmap
+
+    # 2. If --lookback and --end specified => start = end - lookback
+    if args["start"] == -1 and args["end"] != -1:
+        if args["lookback"] == -1:
+            logging.error(
+                "Empty --start, empty --lookback, non-emtpy --end. If --start is empty --lookback should not be empty"
+            )
+            return False
         args["start"] = args["end"] - lookback_seconds
+
+    # 3. If --lookback and --start specified => start = start - lookback, end = now
+    # 4. If only --start specified => start = start, end = now
+    if args["start"] != -1 and args["end"] == -1:
+        if args["lookback"] != -1:
+            args["start"] = args["start"] - lookback_seconds
+        args["end"] = now_obj_timestmap
+
+    if args["start"] > args["end"]:
+        logging.error("start = %d > end = %d", args["start"], args["end"])
+        return False
 
     with open(args["query_file"], "r") as fd:
         args["queries"] = [x.strip() for x in fd.readlines() if "#" not in x]
@@ -104,11 +177,16 @@ def update_args(args):
     args["end_fmt_local"] = datetime.datetime.fromtimestamp(args["end"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     delta = str(datetime.timedelta(seconds=(args["end"] - args["start"])))
 
-    logging.info("query: start local: %s", args["start_fmt_local"])
-    logging.info("query: end   local: %s", args["end_fmt_local"])
-    logging.info("query: start utc  : %s", args["start_fmt"])
-    logging.info("query: end   utc  : %s", args["end_fmt"])
-    logging.info("query: time_range : %s", delta)
+    logging.info("query: now                : %s", now_obj_fmt)
+    logging.info("query: lookback fmt       : %s", args["lookback"])
+    logging.info("query: lookback seconds   : %d", lookback_seconds)
+    logging.info("query: input_start local  : %s", args["input_start_fmt_local"])
+    logging.info("query: input_end   local  : %s", args["input_end_fmt_local"])
+    logging.info("query: start local        : %s", args["start_fmt_local"])
+    logging.info("query: end   local        : %s", args["end_fmt_local"])
+    logging.info("query: start utc          : %s", args["start_fmt"])
+    logging.info("query: end   utc          : %s", args["end_fmt"])
+    logging.info("query: time_range         : %s", delta)
 
     return True
 
@@ -145,15 +223,29 @@ def query_url(args):
             )
         query_output["response"] = response.json()
         print(json.dumps(query_output, indent=2, default=str))
+    return True
 
 
 def main():
     """Main function"""
     args = load_args()
+
+    if args["debug_run"]:
+        logging.getLogger().setLevel(logging.DEBUG)
+        requests_log = logging.getLogger("requests.packages.urllib3")
+        requests_log.setLevel(logging.DEBUG)
+        requests_log.propagate = True
+
+    logging.debug("Dumping args: %s", json.dumps(args, default=str, indent=2))
+
     if not validate_args(args):
         return 1
-    update_args(args)
-    query_url(args)
+
+    if not update_args(args):
+        return 1
+
+    if not query_url(args):
+        return 1
     return 0
 
 
