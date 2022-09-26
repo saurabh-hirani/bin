@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Very basic script to backup ssh config because I nuked mine by mistake.
+# Keeps the last 24 hour backups
 
 curr_hour=$(date +%H)
 
