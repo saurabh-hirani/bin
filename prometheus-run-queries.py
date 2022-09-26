@@ -69,6 +69,7 @@ def load_args():
     )
     parser.add_argument("--url-headers", help="URL headers json str", required=False, default="{}")
     parser.add_argument("--url-args", help="URL args json str", required=False, default="{}")
+    parser.add_argument("--basic-auth", help="provide basic auth user:password", required=False, default=None)
     parser.add_argument("--query-step", help="Query step", default=60, required=False)
     parser.add_argument("--debug", action="store_true", dest="debug_run", help="debug run")
     parser.add_argument("--no-debug", action="store_false", dest="debug_run", help="no debug run")
@@ -174,7 +175,14 @@ def query_url(args):
             "response": None,
         }
         headers.update(args["url_headers"])
-        response = requests.get(url, params=params, headers=headers)
+
+        if args["basic_auth"] is None:
+            response = requests.get(url, params=params, headers=headers)
+        else:
+            username = args["basic_auth"].split(":")[0]
+            password = args["basic_auth"].split(":")[1]
+            response = requests.get(url, params=params, headers=headers, auth=(username, password))
+
         curl_cmd = curlify.to_curl(response.request).replace("-H 'Accept-Encoding: gzip, deflate'", "")
         logging.info("curl command: %s", curl_cmd)
         if response.status_code != 200:
