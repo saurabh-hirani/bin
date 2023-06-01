@@ -15,7 +15,7 @@ success_count="0"
 osascript -e 'Tell application "AnyBar" to set title to ""'
 osascript -e 'Tell application "System Events" to display dialog "Starting timer - do what needs to be done - you have '$duration_mins' minutes" with title "Starting"'
 osascript -e 'Tell application "AnyBar" to set image name to "cyan"'
-osascript -e 'Tell application "AnyBar" to set title to "timer_status=0/4 status='$success_count/4' remaining_time='$remaining_time' mins"'
+osascript -e 'Tell application "AnyBar" to set title to "timer_status=0/4 score='$success_count/4' remaining_time='$remaining_time' mins"'
 
 timer "$one_fourth_duration" && osascript -e 'Tell application "System Events" to display dialog "'"$one_fourth_duration/$full_duration mins completed"'" with title "1/4 time over"' > $status_file
 
