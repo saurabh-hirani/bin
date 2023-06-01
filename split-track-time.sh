@@ -5,9 +5,9 @@
 set -x
 duration_mins="$1"
 
-one_fourth_duration=$(echo "scale=2;$duration_mins/4" | bc)
-two_fourth_duration="$(echo "scale=2;$duration_mins/3" | bc)"
-three_fourth_duration=$(echo "scale=2;$duration_mins/2" | bc)
+one_fourth_duration=$(echo "$duration_mins/4" | bc)
+two_fourth_duration="$(echo "$duration_mins/3" | bc)"
+three_fourth_duration=$(echo "$duration_mins/2" | bc)
 status_file="/tmp/timer-status.txt"
 success_count="0"
 
