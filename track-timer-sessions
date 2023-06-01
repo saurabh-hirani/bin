@@ -1,16 +1,19 @@
 #!/bin/bash
 
 # Install timer - https://github.com/rlue/timer
+# Install AnyBar with text - http://ckyp.us/1gBfC
+# Create copy of AnyBar and rename it AnyBar_copy
 
-set -x
+set -eou pipefail
+
 duration_mins="$1"
 
 one_fourth_duration=$(echo "$duration_mins/4" | bc)
-two_fourth_duration="$(echo "$duration_mins/3" | bc)"
-three_fourth_duration=$(echo "$duration_mins/2" | bc)
 status_file="/tmp/timer-status.txt"
-success_count="0"
+success_count=0
+total_minutes_completed=0
 
+# Clean up
 osascript -e 'Tell application "AnyBar" to set title to ""'
 osascript -e 'Tell application "AnyBar_copy" to set title to ""'
 
@@ -27,62 +30,107 @@ update_remaining_minutes() {
     sleep 60
   done
 }
+
+# Track remaining minutes
 update_remaining_minutes "$one_fourth_duration" &
 
+# Start
 osascript -e 'Tell application "System Events" to display dialog "Starting timer - do what needs to be done - you have '$duration_mins' minutes" with title "Starting"'
 osascript -e 'Tell application "AnyBar" to set image name to "cyan"'
 
+# Initial score
 osascript -e 'Tell application "AnyBar" to set title to "session_status=0/4 score='$success_count/4'"'
-# osascript -e 'Tell application "AnyBar_copy" to set title to "remaining_time='$remaining_time' mins"'
 
-timer "$one_fourth_duration" && osascript -e 'Tell application "System Events" to display dialog "'"$one_fourth_duration/$duration_mins mins completed"'" with title "1/4 time over"' > $status_file
+# Run session
+timer "$one_fourth_duration" && total_minutes_completed=$((total_minutes_completed+one_fourth_duration)) && \
+osascript -e 'Tell application "System Events" to display dialog "'"$total_minutes_completed/$duration_mins mins completed score=$success_count/4"'" with title "1/4 time over"' > $status_file
 
+# Check success/failure status
 if grep -q OK < $status_file; then
   success_count="1"
 fi
+
+# Set current session status
 osascript -e 'Tell application "AnyBar" to set title to "session_status=1/4 score='$success_count/4'"'
-osascript -e 'Tell application "AnyBar" to set image name to "yellow"'
+
+# Set current session color
+if grep -q OK < $status_file; then
+  osascript -e 'Tell application "AnyBar" to set image name to "yellow"'
+else
+  osascript -e 'Tell application "AnyBar" to set image name to "red"'
+fi
+
+# Track remaining minutes
 update_remaining_minutes "$one_fourth_duration" &
 
-timer "$one_fourth_duration" && osascript -e 'Tell application "System Events" to display dialog "'"$two_fourth_duration/$duration_mins mins completed. score=$success_count/4"'" with title "2/4 time over"' > $status_file
+# Run session
+timer "$one_fourth_duration" && total_minutes_completed=$((total_minutes_completed+one_fourth_duration)) && \
+osascript -e 'Tell application "System Events" to display dialog "'"$total_minutes_completed/$duration_mins mins completed score=$success_count/4"'" with title "2/4 time over"' > $status_file
+
+# Check success/failure status
 if grep -q OK < $status_file; then
   success_count=$((success_count+1))
 fi
+
+# Set current session status
 osascript -e 'Tell application "AnyBar" to set title to "session_status=2/4 score='$success_count/4'"'
-osascript -e 'Tell application "AnyBar" to set image name to "yellow"'
+
+# Set current session color
+if grep -q OK < $status_file; then
+  osascript -e 'Tell application "AnyBar" to set image name to "yellow"'
+else
+  osascript -e 'Tell application "AnyBar" to set image name to "red"'
+fi
+
+# Track remaining minutes
 update_remaining_minutes "$one_fourth_duration" &
 
 
-if [[ $success_count -gt 1 ]]; then
-  osascript -e 'Tell application "AnyBar" to set image name to "green"'
-fi
+# Run session
+timer "$one_fourth_duration" && total_minutes_completed=$((total_minutes_completed+one_fourth_duration)) && \
+osascript -e 'Tell application "System Events" to display dialog "'"$total_minutes_completed/$duration_mins mins completed score=$success_count/4"'" with title "3/4 time over"' > $status_file
 
-timer "$one_fourth_duration" && osascript -e 'Tell application "System Events" to display dialog "'"$three_fourth_duration/$duration_mins mins completed. score=$success_count/4"'" with title "3/4 time over"' > $status_file
+# Check success/failure status
 if grep -q OK < $status_file; then
   success_count=$((success_count+1))
 fi
+
+# Set current session status
 osascript -e 'Tell application "AnyBar" to set title to "session_status=3/4 score='$success_count/4'"'
+
+# Set current session color
+if grep -q OK < $status_file; then
+  osascript -e 'Tell application "AnyBar" to set image name to "yellow"'
+else
+  osascript -e 'Tell application "AnyBar" to set image name to "red"'
+fi
+
+# Track remaining minutes
 update_remaining_minutes "$one_fourth_duration" &
 
-timer "$one_fourth_duration" && osascript -e 'Tell application "System Events" to display dialog "'"$duration_mins/$duration_mins mins completed - were you focused?"'" with title "Timer completed"' > $status_file
+# End message
+timer "$one_fourth_duration" && total_minutes_completed=$((total_minutes_completed+one_fourth_duration)) && \
+osascript -e 'Tell application "System Events" to display dialog "'"$total_minutes_completed/$duration_mins mins completed score=$success_count/4"'" with title "4/4 time over"' > $status_file
 
+# Check success/failure status
 if grep -q OK < $status_file; then
   success_count=$((success_count+1))
 fi
 
+osascript -e 'Tell application "System Events" to display dialog "'"score=$success_count/4 Were you focused?"'" with title "4/4 time over"'
+
+# Set the final color
 if [[ $success_count -gt 2 ]]; then
   osascript -e 'Tell application "AnyBar" to set image name to "green"'
-else
+fi
+if [[ $success_count -eq 2 ]]; then
   osascript -e 'Tell application "AnyBar" to set image name to "yellow"'
 fi
-
-osascript -e 'Tell application "AnyBar" to set title to "session_status=4/4 score='$success_count/4'"'
-update_remaining_minutes "$one_fourth_duration" &
-
 if [[ $success_count -lt 2 ]]; then
   osascript -e 'Tell application "AnyBar" to set image name to "red"'
 fi
 
-osascript -e 'Tell application "System Events" to display dialog "'"Total score = $success_count/4"'" with title "Timer completed"'
+# Set final session status
+osascript -e 'Tell application "AnyBar" to set title to "session_status=4/4 score='$success_count/4'"'
 
 wait
