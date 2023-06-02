@@ -21,7 +21,7 @@ update_remaining_minutes() {
   local_duration_mins="$1"
   for i in $(seq 0 "$local_duration_mins"); do
     remaining_time=$(echo "$local_duration_mins - $i" | bc)
-    osascript -e 'Tell application "AnyBar_copy" to set title to "session_time='$remaining_time/$local_duration_mins' mins"'
+    osascript -e 'Tell application "AnyBar_copy" to set title to "time='$remaining_time/$local_duration_mins' mins"'
     if [[ $remaining_time -eq 0 ]]; then
       echo "breaking"
       break
@@ -39,7 +39,7 @@ osascript -e 'Tell application "System Events" to display dialog "Starting timer
 osascript -e 'Tell application "AnyBar" to set image name to "cyan"'
 
 # Initial score
-osascript -e 'Tell application "AnyBar" to set title to "session_status=0/4 score='$success_count/4'"'
+osascript -e 'Tell application "AnyBar" to set title to "status=0/4 score='$success_count/4'"'
 
 # Run session
 timer "$one_fourth_duration" && total_minutes_completed=$((total_minutes_completed+one_fourth_duration)) && \
@@ -51,7 +51,7 @@ if grep -q OK < $status_file; then
 fi
 
 # Set current session status
-osascript -e 'Tell application "AnyBar" to set title to "session_status=1/4 score='$success_count/4'"'
+osascript -e 'Tell application "AnyBar" to set title to "status=1/4 score='$success_count/4'"'
 
 # Set current session color
 if grep -q OK < $status_file; then
@@ -73,7 +73,7 @@ if grep -q OK < $status_file; then
 fi
 
 # Set current session status
-osascript -e 'Tell application "AnyBar" to set title to "session_status=2/4 score='$success_count/4'"'
+osascript -e 'Tell application "AnyBar" to set title to "status=2/4 score='$success_count/4'"'
 
 # Set current session color
 if grep -q OK < $status_file; then
@@ -96,7 +96,7 @@ if grep -q OK < $status_file; then
 fi
 
 # Set current session status
-osascript -e 'Tell application "AnyBar" to set title to "session_status=3/4 score='$success_count/4'"'
+osascript -e 'Tell application "AnyBar" to set title to "status=3/4 score='$success_count/4'"'
 
 # Set current session color
 if grep -q OK < $status_file; then
@@ -131,6 +131,6 @@ if [[ $success_count -lt 2 ]]; then
 fi
 
 # Set final session status
-osascript -e 'Tell application "AnyBar" to set title to "session_status=4/4 score='$success_count/4'"'
+osascript -e 'Tell application "AnyBar" to set title to "status=4/4 score='$success_count/4'"'
 
 wait
