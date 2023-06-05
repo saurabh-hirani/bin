@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Install AnyBar with text - http://ckyp.us/1gBfC
+# Create copy of AnyBar and rename it AnyBar_copy_2
+
+osascript -e 'Tell application "AnyBar_copy_2" to set title to "'$1'"'
+
+if [[ $# -eq 2 ]]; then
+  osascript -e 'Tell application "AnyBar_copy_2" to set image name to "'$2'"'
+fi
