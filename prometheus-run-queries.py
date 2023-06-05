@@ -73,7 +73,11 @@ def load_args():
     parser.add_argument("--query-step", help="Query step", default=60, required=False)
     parser.add_argument("--debug", action="store_true", dest="debug_run", help="debug run")
     parser.add_argument("--no-debug", action="store_false", dest="debug_run", help="no debug run")
+    parser.add_argument("--indent", action="store_true", dest="indent", help="indent json output")
+    parser.add_argument("--no-indent", action="store_false", dest="indent", help="do not indent json output")
+
     parser.set_defaults(debug_run=False)
+    parser.set_defaults(indent=True)
 
     args = vars(parser.parse_args(sys.argv[1:]))
 
@@ -176,25 +180,44 @@ def query_url(args):
         }
         headers.update(args["url_headers"])
 
-        if args["basic_auth"] is None:
-            response = requests.get(url, params=params, headers=headers)
-        else:
-            username = args["basic_auth"].split(":")[0]
-            password = args["basic_auth"].split(":")[1]
-            response = requests.get(url, params=params, headers=headers, auth=(username, password))
+        try:
+            logging.info("query_str: %s", query_str)
+            sys.stdout.flush()
+            sys.stderr.flush()
 
-        curl_cmd = curlify.to_curl(response.request).replace("-H 'Accept-Encoding: gzip, deflate'", "")
-        logging.info("curl command: %s", curl_cmd)
-        if response.status_code != 200:
-            query_output["response"] = response.text
-            logging.error(
-                "Failed to query query_str=[%s] status_code=%s response_text=%s",
-                query_str,
-                response.status_code,
-                response.text,
-            )
-        query_output["response"] = response.json()
-        print(json.dumps(query_output, indent=2, default=str))
+            if args["basic_auth"] is None:
+                response = requests.get(url, params=params, headers=headers)
+            else:
+                username = args["basic_auth"].split(":")[0]
+                password = args["basic_auth"].split(":")[1]
+                response = requests.get(url, params=params, headers=headers, auth=(username, password))
+
+            curl_cmd = curlify.to_curl(response.request).replace("-H 'Accept-Encoding: gzip, deflate'", "")
+
+            logging.info("curl command: %s", curl_cmd)
+            sys.stdout.flush()
+            sys.stderr.flush()
+
+            if response.status_code != 200:
+                query_output["response"] = response.text
+                logging.error(
+                    "Failed to query query_str=[%s] status_code=%s response_text=%s",
+                    query_str,
+                    response.status_code,
+                    response.text,
+                )
+            query_output["response"] = response.json()
+
+            if args["indent"]:
+                print(json.dumps(query_output, default=str, indent=2))
+            else:
+                print(json.dumps(query_output, default=str))
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception as ex:
+            logging.error("Caught exception: %s", ex)
+            pass
+
     return True
 
 
@@ -208,7 +231,10 @@ def main():
         requests_log.setLevel(logging.DEBUG)
         requests_log.propagate = True
 
-    logging.debug("Dumping args: %s", json.dumps(args, default=str, indent=2))
+    if args["indent"]:
+        logging.debug("Dumping args: %s", json.dumps(args, default=str, indent=2))
+    else:
+        logging.debug("Dumping args: %s", json.dumps(args, default=str))
 
     if not validate_args(args):
         return 1
