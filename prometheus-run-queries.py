@@ -75,6 +75,8 @@ def load_args():
     parser.add_argument("--no-debug", action="store_false", dest="debug_run", help="no debug run")
     parser.add_argument("--indent", action="store_true", dest="indent", help="indent json output")
     parser.add_argument("--no-indent", action="store_false", dest="indent", help="do not indent json output")
+    parser.add_argument("--trace", action="store_true", dest="trace", help="run with trace")
+    parser.add_argument("--no-trace", action="store_false", dest="trace", help="run without trace")
 
     parser.set_defaults(debug_run=False)
     parser.set_defaults(indent=True)
@@ -140,6 +142,11 @@ def update_args(args):
     with open(args["query_file"], "r") as fd:
         args["queries"] = [x.strip() for x in fd.readlines() if "#" not in x]
 
+    if args["trace"]:
+        args["trace"] = 1
+    else:
+        args["trace"] = 0
+
     args["start_fmt"] = datetime.datetime.fromtimestamp(args["start"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     args["end_fmt"] = datetime.datetime.fromtimestamp(args["end"], tz=pytz.UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     args["start_fmt_local"] = datetime.datetime.fromtimestamp(args["start"]).strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -171,6 +178,7 @@ def query_url(args):
             "start": args["start_fmt"],
             "end": args["end_fmt"],
             "step": args["query_step"],
+            "trace": args["trace"],
         }
         params.update(args["url_args"])
         headers = {}
