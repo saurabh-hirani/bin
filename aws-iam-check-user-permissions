@@ -5,7 +5,7 @@
 # Output to dir in parallel while dumping group inline and group attached
 # Check on how policy simulation works to get access
 
-user_arn=$(aws sts get-caller-identity --query "Arn" --output text)
+user_arn=${1:-$(aws sts get-caller-identity --query "Arn" --output text)}
 user_name=$(echo "$user_arn" | awk -F'/' '{print $NF}')
 
 echo >&2 "---------------------"
