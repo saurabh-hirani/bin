@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# TODO
+# Output to dir in parallel while dumping user inline and user attached
+# Output to dir in parallel while dumping group inline and group attached
+# Check on how policy simulation works to get access
+
+user_arn=$(aws sts get-caller-identity --query "Arn" --output text)
+user_name=$(echo "$user_arn" | awk -F'/' '{print $NF}')
+
+echo >&2 "---------------------"
+echo >&2 "STATUS: user_arn=$user_arn"
+echo >&2 "STATUS: user_name=$user_name"
+
+echo >&2 "---------------------"
+echo >&2 "STATUS: $user_arn: Listing attached user policies"
+aws iam list-attached-user-policies --user-name "$user_name"
+
+echo >&2 "---------------------"
+echo >&2 "STATUS: $user_arn: Listing inline policies"
+aws iam list-user-policies --user-name "$user_name"
+
+echo >&2 "---------------------"
+echo >&2 "STATUS: $user_arn: Dumping permissions of attached policies"
+
+for policy in $(aws iam list-attached-user-policies --user-name "$user_name" --query "AttachedPolicies[*].PolicyArn" --output text); do
+  echo >&2 "STATUS: $user_arn: $policy: Dumping permissions of attached policy"
+  aws iam get-policy-version --policy-arn $policy --version-id "$(aws iam list-policy-versions --policy-arn "$policy" --query "Versions[0].VersionId" --output text)"
+done
+
+echo >&2 "---------------------"
+echo >&2 "STATUS: $user_arn: Dumping permissions of inline policies"
+
+for policy in $(aws iam list-user-policies --user-name "$user_name" --output text); do
+  echo >&2 "STATUS: $user_arn: $policy: Dumping permissions of inline policy"
+  aws iam get-user-policy --user-name "$user_name" --policy-name "$policy"
+done
+
+echo >&2 "---------------------"
+echo >&2 "STATUS: $user_arn: Dumping groups for user"
+aws iam list-groups-for-user --user-name "$user_name"
+
+echo >&2 "---------------------"
+echo >&2 "STATUS: $user_arn: Dumping policies attached to groups"
+
+for group in $(aws iam list-groups-for-user --user-name "$user_name" --query "Groups[*].GroupName" --output text); do
+
+  # List attached managed policies
+  for policy in $(aws iam list-attached-group-policies --group-name "$group" --query "AttachedPolicies[*].PolicyArn" --output text); do
+    echo >&2 "STATUS: $user_arn: $group: $policy: Dumping permissions of attached policy"
+    aws iam get-policy-version --policy-arn "$policy" --version-id "$(aws iam list-policy-versions --policy-arn "$policy" --query "Versions[0].VersionId" --output text)"
+  done
+
+  # List inline policies
+  for policy in $(aws iam list-group-policies --group-name "$group" --query "PolicyNames[*]" --output text); do
+    echo >&2 "STATUS: $user_arn: $group: $policy: Dumping permissions of inline policy"
+    aws iam get-group-policy --group-name "$group" --policy-name "$policy"
+  done
+done
