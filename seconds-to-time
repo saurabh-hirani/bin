@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eou pipefail
+
+seconds_to_time() {
+  time="$1"
+  hours=$(($time / 60 / 60 % 24))
+  minutes=$(($time / 60 % 60))
+  seconds=$(($time % 60))
+  output=$(printf '%02d:%02d:%02d' "$hours" "$minutes" "$seconds")
+  echo "$output"
+}
+
+cat - | while read -r line; do
+  seconds_to_time "$line"
+done

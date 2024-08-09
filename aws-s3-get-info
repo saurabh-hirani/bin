@@ -1,0 +1,111 @@
+#!/bin/bash
+
+set -eou pipefail
+
+# Usage:
+# $0 [bucket] > out.csv 2>out.log
+# RUN_PARALLEL=1 $0 [bucket] > out.csv 2>out.log
+#
+# Find total time taken to analyze the buckets
+# header=$(head -n 1 out.csv)
+# cat out.csv | awk -F',' '{ print $6 }' | grep -v processing | paste -sd+ | bc | seconds-to-time
+#
+# List of buckets - sorted by last updated time asc
+# echo "$header\n$(cat out.csv | sort -n -k6 -t',' | grep -v 'bucket,' | grep -v '0,0')" | column -s, -t
+#
+# List of buckets - sorted by size desc
+# echo "$header\n$(cat out.csv | sort -rn -k3 -t',' | grep -v 'bucket,' | grep -v '0,0')" | column -s, -t
+#
+# List of buckets - sorted by processing time
+# echo "$header\n$(cat out.csv | sort -rn -k7 -t',' | grep -v 'bucket,' | grep -v '0,0')" | column -s, -t
+#
+
+buckets=${1:-$(aws s3api list-buckets --query "Buckets[].Name" --output text)}
+
+RUN_PARALLEL=${RUN_PARALLEL:-0}
+PER_GB_STORAGE_COST=${PER_GB_STORAGE_COST:-0.026}
+
+seconds_to_time() {
+  time="$1"
+  hours=$(($time / 60 / 60 % 24))
+  minutes=$(($time / 60 % 60))
+  seconds=$(($time % 60))
+  output=$(printf '%02d:%02d:%02d' "$hours" "$minutes" "$seconds")
+  echo "$output"
+}
+
+# This function assumes that storage < 50 TB.
+# S3 standard storage tier cost changes per GB post this.
+# This is an overall approximation because in the same bucket objects may have different storage classes.
+find_storage_cost() {
+  size="$1"
+  echo "scale=2; $(echo "scale=2; $size / (1024 * 1024 * 1024)" | bc) * \
+  $PER_GB_STORAGE_COST" | bc
+}
+
+find_bucket_size_contents() {
+  bucket="$1"
+  bucket_location=$(aws s3api get-bucket-location --bucket "$bucket" --query "LocationConstraint" --output text)
+  [[ "$bucket_location" == "None" ]] && bucket_location="us-east-1"
+
+  # Get the size and count of objects in the bucket
+  set +e
+  before_time=$(date +%s)
+  bucket_info=$(aws s3api list-objects --bucket "$bucket" --output json \
+    --query "[sum(Contents[].Size), length(Contents[]), Contents[?LastModified!=null]|max_by(@, &LastModified)]")
+  exit_status="$?"
+
+  after_time=$(date +%s)
+  processing_time=$((after_time - before_time))
+
+  # Format time if required - choose betwen ease of readability and ease of
+  # sorting if output set in an excel sheet
+  # processing_time=$(seconds_to_time "$processing_time")
+
+  # shellcheck disable=2181
+  if [[ "$exit_status" != "0" ]]; then
+    echo >&2 "WARN: $bucket: failed to get bucket size and object count"
+    echo "$bucket,$bucket_location,0,0,0,0,$processing_time"
+    return 0
+  fi
+
+  set -e
+
+  # Parse the output
+  bucket_size=$(echo "$bucket_info" | jq -r '.[0] // 0')
+  bucket_count=$(echo "$bucket_info" | jq -r '.[1] // 0')
+  bucket_last_modified=$(echo "$bucket_info" | jq -r '.[2].LastModified')
+
+  # Check if bucket is empty
+  if [[ "$bucket_count" -eq 0 ]] || [[ "$bucket_count" == "" ]]; then
+    bucket_count=0
+    bucket_size=0
+    bucket_last_modified=0
+    bucket_last_modified_epoch=0
+  fi
+
+  if [ "$bucket_last_modified" == "null" ]; then
+    bucket_last_modified="NA"
+  else
+    bucket_last_modified_epoch=$(date -d "$bucket_last_modified" +%s)
+  fi
+
+  # storage_cost=$(find_storage_cost "$size")
+
+  # Output the bucket information
+  echo "$bucket,$bucket_location,$bucket_size,$bucket_count,$bucket_last_modified,$bucket_last_modified_epoch,$processing_time"
+}
+
+echo "bucket,bucket_location,bucket_size,bucket_count,bucket_last_modified,bucket_last_modified_epoch,processing_time_sec"
+for bucket in $buckets; do
+  echo >&2 "STATUS: $bucket: checking bucket size and object count"
+  if [[ "$RUN_PARALLEL" == "1" ]]; then
+    find_bucket_size_contents "$bucket" &
+  else
+    find_bucket_size_contents "$bucket"
+  fi
+done
+
+if [[ "$RUN_PARALLEL" == "1" ]]; then
+  wait
+fi
