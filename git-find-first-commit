@@ -1,6 +1,6 @@
 #!/bin/bash
 
-\find ${1:-.} -type f -maxdepth 1 -not -path '*/.git/*' | while read -r file; do
+\find ${1:-.} -type f -maxdepth ${2:-1} -not -path '*/.git/*' | while read -r file; do
   first_commit=$(git log --diff-filter=A --follow --format="%h %ad <%ae>" --date=short -- "$file" | tail -n 1)
   if [ -n "$first_commit" ]; then
     echo "$file: $first_commit"
