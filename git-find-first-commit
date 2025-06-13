@@ -1,0 +1,24 @@
+#!/bin/bash
+
+\find ${1:-.} -type f -maxdepth 1 -not -path '*/.git/*' | while read -r file; do
+  first_commit=$(git log --diff-filter=A --follow --format="%h %ad <%ae>" --date=short -- "$file" | tail -n 1)
+  if [ -n "$first_commit" ]; then
+    echo "$file: $first_commit"
+  fi
+done | column -t
+
+# Sample code to do the column -t work the manual way
+# column -t finds the max width of the column and then
+# arranges them. printf has to assume
+#
+# temp_file=$(mktemp)
+# \find ${1:-.} -type f -maxdepth 1 -not -path '*/.git/*' | while read -r file; do
+#   git log --diff-filter=A --follow --format="%h|%an|%ae|%ad|$file" --date=short -- "$file" | tail -n 1
+# done > "$temp_file"
+
+# sort -t '|' -k4 -k5 "$temp_file" | while IFS='|' read -r hash author email date path; do
+#   printf "%-10s %-30s %-30s %-30s %-10s\n" "$hash" "$author" "$email" "$date" "$path"
+# done
+
+# rm "$temp_file"
+
