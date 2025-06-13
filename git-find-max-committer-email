@@ -1,0 +1,8 @@
+#!/bin/bash
+
+\find ${1:-.} -type f -maxdepth 1 -not -path '*/.git/*' | while read -r file; do
+  email=$(git log --follow --format="%ae" -- "$file" | sort | uniq -c | sort -nr | head -1)
+  if [ -n "$email" ]; then
+    echo "$file: $email"
+  fi
+done
