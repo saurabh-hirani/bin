@@ -5,7 +5,10 @@
   if [ -n "$first_commit" ]; then
     echo "$file: $first_commit"
   fi
-done | column -t
+done
+
+# to structure and sort - not adding them in the original output to keep it flexible
+# | sort -k2 | column -t
 
 # Sample code to do the column -t work the manual way
 # column -t finds the max width of the column and then
