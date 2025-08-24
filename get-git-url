@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Script to generate GitHub HTTPS link for any folder in a repository
+# Usage: ./github-folder-link.sh [path]
+# If no path provided, uses current directory
+
+get_absolute_path() {
+    local path="$1"
+    if [[ "$path" = /* ]]; then
+        echo "$path"
+    else
+        echo "$(pwd)/$path"
+    fi
+}
+
+get_relative_path() {
+    local target="$1"
+    local base="$2"
+    
+    # Convert both to absolute paths
+    target=$(get_absolute_path "$target")
+    base=$(get_absolute_path "$base")
+    
+    # Use Python to calculate relative path (available on macOS)
+    python3 -c "import os; print(os.path.relpath('$target', '$base'))"
+}
+
+get_github_link() {
+    local target_path="${1:-$(pwd)}"
+    
+    # Convert to absolute path
+    target_path=$(get_absolute_path "$target_path")
+    
+    # Check if path exists
+    if [ ! -d "$target_path" ]; then
+        echo "Error: Path doesn't exist: $target_path" >&2
+        return 1
+    fi
+    
+    # Check if we're in a git repository
+    if ! git -C "$target_path" rev-parse --git-dir > /dev/null 2>&1; then
+        echo "Error: Not in a git repository" >&2
+        return 1
+    fi
+    
+    # Get the git root directory
+    local git_root=$(git -C "$target_path" rev-parse --show-toplevel)
+    
+    # Get the remote URL
+    local remote_url=$(git -C "$target_path" remote get-url origin 2>/dev/null)
+    
+    if [ -z "$remote_url" ]; then
+        echo "Error: No remote 'origin' found" >&2
+        return 1
+    fi
+    
+    # Convert SSH URL to HTTPS if needed
+    if [[ "$remote_url" == git@github.com:* ]]; then
+        # Convert git@github.com:user/repo.git to https://github.com/user/repo
+        remote_url=$(echo "$remote_url" | sed 's/git@github.com:/https:\/\/github.com\//' | sed 's/\.git$//')
+    elif [[ "$remote_url" == https://github.com/* ]]; then
+        # Remove .git suffix if present
+        remote_url=$(echo "$remote_url" | sed 's/\.git$//')
+    else
+        echo "Error: Unsupported remote URL format: $remote_url" >&2
+        return 1
+    fi
+    
+    # Get current branch
+    local branch=$(git -C "$target_path" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [ -z "$branch" ]; then
+        branch="main"
+    fi
+    
+    # Calculate relative path from git root
+    local relative_path=$(get_relative_path "$target_path" "$git_root")
+    
+    # Construct the GitHub URL
+    local github_url="$remote_url/tree/$branch"
+    
+    # Add path if not at root
+    if [ "$relative_path" != "." ]; then
+        github_url="$github_url/$relative_path"
+    fi
+    
+    echo "$github_url"
+}
+
+# Main execution
+if [ "${BASH_SOURCE[0]}" == "${0}" ]; then
+    get_github_link "$1"
+fi
