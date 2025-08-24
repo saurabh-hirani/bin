@@ -37,6 +37,78 @@ def number_to_rupees(num):
         crores = num / 10000000
         return f"{crores:.2f} crores"
 
+def number_to_indian_words(num):
+    """Convert number to full Indian text representation"""
+    if num < 0:
+        return f"minus {number_to_indian_words(-num)}"
+    
+    if num == 0:
+        return "zero rupees"
+    
+    # Define number words
+    ones = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+            "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", 
+            "seventeen", "eighteen", "nineteen"]
+    
+    tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+    
+    def convert_hundreds(n):
+        result = ""
+        if n >= 100:
+            result += ones[n // 100] + " hundred"
+            n %= 100
+            if n > 0:
+                result += " and "
+        
+        if n >= 20:
+            result += tens[n // 10]
+            if n % 10 > 0:
+                result += " " + ones[n % 10]
+        elif n > 0:
+            result += ones[n]
+        
+        return result
+    
+    # Break down the number
+    crores = int(num // 10000000)
+    num %= 10000000
+    lakhs = int(num // 100000)
+    num %= 100000
+    thousands = int(num // 1000)
+    num %= 1000
+    hundreds = int(num)
+    
+    parts = []
+    
+    if crores > 0:
+        if crores == 1:
+            parts.append("one crore")
+        else:
+            parts.append(convert_hundreds(crores) + " crores")
+    
+    if lakhs > 0:
+        if lakhs == 1:
+            parts.append("one lakh")
+        else:
+            parts.append(convert_hundreds(lakhs) + " lakhs")
+    
+    if thousands > 0:
+        if thousands == 1:
+            parts.append("one thousand")
+        else:
+            parts.append(convert_hundreds(thousands) + " thousands")
+    
+    if hundreds > 0:
+        parts.append(convert_hundreds(hundreds))
+    
+    result = ", ".join(parts)
+    if result:
+        result += " rupees"
+    else:
+        result = "zero rupees"
+    
+    return result.capitalize()
+
 def main():
     try:
         for line in sys.stdin:
@@ -48,7 +120,8 @@ def main():
                 num = float(line)
                 indian_formatted = indian_comma_format(num)
                 converted = number_to_rupees(num)
-                print(f"{line} = {indian_formatted} = {converted}")
+                words = number_to_indian_words(num)
+                print(f"{line} = {indian_formatted} = {converted} = {words}")
             except ValueError:
                 print(f"Invalid number: {line}", file=sys.stderr)
                 
