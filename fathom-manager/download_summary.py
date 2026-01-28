@@ -106,6 +106,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("recording_id", help="Recording ID or 'last'/'today'/'yesterday'/'dd-mm-yyyy'")
     parser.add_argument("-o", "--output", help="Output file path (default: print to stdout)")
+    parser.add_argument("--output-dir", help="Output directory (default: ~/Downloads/dd-mm-yyyy/)")
     parser.add_argument("--prefix", help="Filter meetings by title prefix")
     args = parser.parse_args()
     
@@ -126,9 +127,17 @@ if __name__ == "__main__":
             formatted_date = 'unknown date'
         
         print(f"status=downloading_summary meeting='{title}' date={formatted_date}", file=sys.stderr)
-        output_file = args.output or "summary.md"
     else:
         recording_id = int(args.recording_id)
+    
+    if args.output:
         output_file = args.output
+    elif args.output_dir:
+        os.makedirs(args.output_dir, exist_ok=True)
+        output_file = os.path.join(args.output_dir, "summary.md")
+    else:
+        output_dir = os.path.expanduser(f"~/Downloads/{datetime.now().strftime('%d-%m-%Y')}")
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, "summary.md")
     
     download_summary(recording_id, output_file)
