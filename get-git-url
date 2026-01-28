@@ -58,7 +58,10 @@ get_github_link() {
     if [[ "$remote_url" == git@github.com:* ]]; then
         # Convert git@github.com:user/repo.git to https://github.com/user/repo
         remote_url=$(echo "$remote_url" | sed 's/git@github.com:/https:\/\/github.com\//' | sed 's/\.git$//')
-    elif [[ "$remote_url" == https://github.com/* ]]; then
+    elif [[ "$remote_url" == git@*:* ]]; then
+        # Convert git@hostname:path.git to https://hostname/path
+        remote_url=$(echo "$remote_url" | sed 's/git@\([^:]*\):/https:\/\/\1\//' | sed 's/\.git$//')
+    elif [[ "$remote_url" == https://* ]]; then
         # Remove .git suffix if present
         remote_url=$(echo "$remote_url" | sed 's/\.git$//')
     else
