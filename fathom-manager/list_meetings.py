@@ -8,7 +8,7 @@ def load_credentials():
     with open('credentials.json', 'r') as f:
         return json.load(f)
 
-def list_meetings(limit=5, output_json=False):
+def list_meetings(limit=5, output_json=False, title_prefix=None):
     creds = load_credentials()
     api_key = creds['fathom_api_key']
     
@@ -23,7 +23,12 @@ def list_meetings(limit=5, output_json=False):
     
     if response.status_code == 200:
         data = response.json()
-        meetings = data.get('items', [])[:limit]
+        meetings = data.get('items', [])
+        
+        if title_prefix:
+            meetings = [m for m in meetings if title_prefix.lower() in m.get('title', '').lower()]
+        
+        meetings = meetings[:limit]
         
         if output_json:
             print(json.dumps(meetings, indent=2))
@@ -64,6 +69,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--last", type=int, default=5, help="Number of meetings to list")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--prefix", help="Filter meetings by title prefix")
     args = parser.parse_args()
     
-    list_meetings(args.last, args.json)
+    list_meetings(args.last, args.json, args.prefix)
