@@ -37,6 +37,7 @@ def list_meetings(limit=5, output_json=False):
                 meeting_url = meeting.get('url', '')
                 recording_id = meeting.get('recording_id', '')
                 recorded_by = meeting.get('recorded_by', {}).get('name', 'Unknown')
+                share_url = meeting.get('share_url', '')
                 
                 # Format date
                 if created_at:
@@ -51,6 +52,8 @@ def list_meetings(limit=5, output_json=False):
                 print(f"   date: {formatted_date}")
                 print(f"   recorded_by: {recorded_by}")
                 print(f"   meeting_url: {meeting_url}")
+                if share_url:
+                    print(f"   share_url: {share_url}")
                 print(f"   recording_id: {recording_id}")
                 print()
     else:
