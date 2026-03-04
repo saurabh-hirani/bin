@@ -1,0 +1,124 @@
+#!/bin/bash
+# Helper script to launch Claude Code with IDE integration in tmux
+# Usage: claude-ide [PORT] [claude-args...]
+#        claude-ide --list
+#        claude-ide --help
+
+show_help() {
+  cat << 'EOF'
+Usage: claude-ide [OPTIONS] [CLAUDE_ARGS...]
+
+OPTIONS:
+  PORT              Connect to specific IDE server port (e.g., claude-ide 12345)
+  --list            List all active IDE servers
+  --help            Show this help message
+
+EXAMPLES:
+  claude-ide                    # Connect to most recent IDE server
+  claude-ide 12345              # Connect to specific port
+  claude-ide --list             # Show all active servers
+  claude-ide 12345 --model opus # Connect to port 12345 with custom args
+
+SETUP:
+  1. In nvim, press ,ac to start the IDE server
+  2. In tmux, run: claude-ide
+  3. Use ,ab to add files, ,as to send selections, etc.
+EOF
+}
+
+list_servers() {
+  local lock_dir="$HOME/.claude/ide"
+  if [ ! -d "$lock_dir" ]; then
+    echo "No IDE servers found (lock directory doesn't exist)"
+    return 1
+  fi
+
+  local lock_files
+  mapfile -t lock_files < <(find "$lock_dir" -maxdepth 1 -name "*.lock" -type f -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+  if [ ${#lock_files[@]} -eq 0 ]; then
+    echo "No IDE servers found"
+    return 1
+  fi
+
+  echo "Active Claude Code IDE servers:"
+  echo ""
+  for lock_file in "${lock_files[@]}"; do
+    local port
+    local pid
+    local workspace
+    port=$(basename "$lock_file" .lock)
+    pid=$(jq -r '.pid // empty' "$lock_file" 2>/dev/null)
+    workspace=$(jq -r '.workspaceFolders[0] // "(unknown)"' "$lock_file" 2>/dev/null)
+
+    printf "  Port %-6s | PID %-6s | %s\n" "$port" "${pid:-?}" "$workspace"
+  done
+  echo ""
+}
+
+# Parse arguments
+PORT=""
+CLAUDE_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help)
+      show_help
+      exit 0
+      ;;
+    --list)
+      list_servers
+      exit $?
+      ;;
+    [0-9]*)
+      if [ -z "$PORT" ]; then
+        PORT="$1"
+      else
+        CLAUDE_ARGS+=("$1")
+      fi
+      shift
+      ;;
+    *)
+      CLAUDE_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# If no port specified, find the most recent lock file
+if [ -z "$PORT" ]; then
+  LOCK_FILE=$(find ~/.claude/ide -maxdepth 1 -name "*.lock" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+
+  if [ -z "$LOCK_FILE" ]; then
+    echo "Error: No Claude IDE lock file found. Start the IDE server in nvim first with :ClaudeCode"
+    echo ""
+    echo "Usage: claude-ide [PORT] [claude-args...]"
+    echo "       claude-ide --list"
+    echo "       claude-ide --help"
+    exit 1
+  fi
+
+  PORT=$(basename "$LOCK_FILE" .lock)
+else
+  # Verify the specified port exists
+  LOCK_FILE="$HOME/.claude/ide/$PORT.lock"
+  if [ ! -f "$LOCK_FILE" ]; then
+    echo "Error: No IDE server found on port $PORT"
+    echo ""
+    echo "Available servers:"
+    list_servers
+    exit 1
+  fi
+fi
+
+if [ -z "$PORT" ] || ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+  echo "Error: Could not extract valid port from lock file: $LOCK_FILE"
+  exit 1
+fi
+
+echo "Connecting to Claude Code IDE on port $PORT..."
+
+# Launch Claude with the port and IDE integration enabled
+export CLAUDE_CODE_SSE_PORT="$PORT"
+export ENABLE_IDE_INTEGRATION="true"
+
+exec claude --ide "${CLAUDE_ARGS[@]}"
