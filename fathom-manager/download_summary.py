@@ -71,6 +71,29 @@ def get_meetings_by_date(date_filter, title_prefix=None):
     
     return None
 
+def get_recording_date(recording_id):
+    creds = load_credentials()
+    api_key = creds['fathom_api_key']
+    
+    headers = {
+        'X-Api-Key': api_key,
+        'Content-Type': 'application/json'
+    }
+    
+    url = 'https://api.fathom.ai/external/v1/meetings'
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        meetings = data.get('items', [])
+        for meeting in meetings:
+            if meeting.get('recording_id') == recording_id:
+                created_at = meeting.get('created_at', '')
+                if created_at:
+                    dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    return dt.strftime('%d-%m-%Y')
+    return datetime.now().strftime('%d-%m-%Y')
+
 def download_summary(recording_id, output_file=None):
     creds = load_credentials()
     api_key = creds['fathom_api_key']
@@ -123,12 +146,15 @@ if __name__ == "__main__":
         if created_at:
             dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
             formatted_date = dt.strftime('%Y-%m-%d')
+            date_dir = dt.strftime('%d-%m-%Y')
         else:
             formatted_date = 'unknown date'
+            date_dir = datetime.now().strftime('%d-%m-%Y')
         
         print(f"status=downloading_summary meeting='{title}' date={formatted_date}", file=sys.stderr)
     else:
         recording_id = int(args.recording_id)
+        date_dir = get_recording_date(recording_id)
     
     if args.output:
         output_file = args.output
@@ -136,7 +162,7 @@ if __name__ == "__main__":
         os.makedirs(args.output_dir, exist_ok=True)
         output_file = os.path.join(args.output_dir, "summary.md")
     else:
-        output_dir = os.path.expanduser(f"~/Downloads/{datetime.now().strftime('%d-%m-%Y')}")
+        output_dir = os.path.expanduser(f"~/Downloads/{date_dir}")
         os.makedirs(output_dir, exist_ok=True)
         output_file = os.path.join(output_dir, "summary.md")
     
