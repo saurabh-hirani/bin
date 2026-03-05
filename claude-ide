@@ -86,7 +86,7 @@ done
 
 # If no port specified, find the most recent lock file
 if [ -z "$PORT" ]; then
-  LOCK_FILE=$(find ~/.claude/ide -maxdepth 1 -name "*.lock" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  LOCK_FILE=$(\find ~/.claude/ide -maxdepth 1 -name "*.lock" -type f -exec ls -lT {} \; | sort -nr | awk '{ print $NF }')
 
   if [ -z "$LOCK_FILE" ]; then
     echo "Error: No Claude IDE lock file found. Start the IDE server in nvim first with :ClaudeCode"
