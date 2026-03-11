@@ -7,35 +7,27 @@ import argparse
 from prettytable import PrettyTable
 from datetime import datetime
 
-# Read config first to get valid calendar IDs
-config_file_index = None
-for i, arg in enumerate(sys.argv):
-    if not arg.startswith('--') and arg.endswith('.json'):
-        config_file_index = i
-        break
-
-valid_calendar_ids = []
-if config_file_index:
-    try:
-        with open(sys.argv[config_file_index]) as f:
-            temp_config = json.load(f)
-            valid_calendar_ids = [cal.get('id') for cal in temp_config.get('calendars', []) if cal.get('id')]
-    except:
-        pass
-
-# Parse arguments
+# Parse arguments with config option
 parser = argparse.ArgumentParser()
-if valid_calendar_ids:
-    parser.add_argument('--calendar', action='append', choices=valid_calendar_ids, help='Filter by calendar (can be specified multiple times)')
-else:
-    parser.add_argument('--calendar', action='append', help='Filter by calendar (can be specified multiple times)')
-parser.add_argument('config_file', help='Path to config file')
+parser.add_argument('--config', default='~/.gcalcli-config.json', help='Path to config file (default: ~/.gcalcli-config.json)')
+parser.add_argument('--calendar', action='append', help='Filter by calendar (can be specified multiple times)')
 parser.add_argument('date_args', nargs='*', help='Date range arguments')
 args_parsed = parser.parse_args()
 
+# Expand tilde in config path
+import os
+config_path = os.path.expanduser(args_parsed.config)
+
 # Read config from file
-with open(args_parsed.config_file) as f:
+with open(config_path) as f:
     config = json.load(f)
+
+# Validate calendar choices
+valid_calendar_ids = [cal.get('id') for cal in config.get('calendars', []) if cal.get('id')]
+if args_parsed.calendar:
+    invalid = [c for c in args_parsed.calendar if c not in valid_calendar_ids]
+    if invalid:
+        parser.error(f"Invalid calendar(s): {', '.join(invalid)}. Valid options: {', '.join(valid_calendar_ids)}")
 
 # Filter calendars based on --calendar flag
 calendars = config.get("calendars", [])
