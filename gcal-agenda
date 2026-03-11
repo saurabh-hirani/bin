@@ -7,9 +7,28 @@ import argparse
 from prettytable import PrettyTable
 from datetime import datetime
 
+# Read config first to get valid calendar IDs
+config_file_index = None
+for i, arg in enumerate(sys.argv):
+    if not arg.startswith('--') and arg.endswith('.json'):
+        config_file_index = i
+        break
+
+valid_calendar_ids = []
+if config_file_index:
+    try:
+        with open(sys.argv[config_file_index]) as f:
+            temp_config = json.load(f)
+            valid_calendar_ids = [cal.get('id') for cal in temp_config.get('calendars', []) if cal.get('id')]
+    except:
+        pass
+
 # Parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--calendar', choices=['self', 'work', 'one2n', 'all'], default='all', help='Filter by calendar')
+if valid_calendar_ids:
+    parser.add_argument('--calendar', action='append', choices=valid_calendar_ids, help='Filter by calendar (can be specified multiple times)')
+else:
+    parser.add_argument('--calendar', action='append', help='Filter by calendar (can be specified multiple times)')
 parser.add_argument('config_file', help='Path to config file')
 parser.add_argument('date_args', nargs='*', help='Date range arguments')
 args_parsed = parser.parse_args()
@@ -20,8 +39,8 @@ with open(args_parsed.config_file) as f:
 
 # Filter calendars based on --calendar flag
 calendars = config.get("calendars", [])
-if args_parsed.calendar != 'all':
-    calendars = [cal for cal in calendars if cal.get('id') == args_parsed.calendar]
+if args_parsed.calendar:
+    calendars = [cal for cal in calendars if cal.get('id') in args_parsed.calendar]
 
 args = args_parsed.date_args
 
@@ -33,9 +52,18 @@ current_time_mins = current_hour * 60 + current_min
 current_date = now.strftime("%a %b %d %Y")
 
 # ANSI color codes
-RED = '\033[91m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
+COLOR_MAP = {
+    'red': '\033[91m',
+    'green': '\033[92m',
+    'yellow': '\033[93m',
+    'blue': '\033[94m',
+    'purple': '\033[95m',
+    'cyan': '\033[96m',
+    'white': '\033[97m'
+}
+RED = COLOR_MAP['red']
+GREEN = COLOR_MAP['green']
+YELLOW = COLOR_MAP['yellow']
 RESET = '\033[0m'
 
 # Month mapping for sorting
@@ -85,17 +113,20 @@ for cal in calendars:
             day_num = int(date_parts[2])
             date_sort_key = (month_num, day_num)
             
-            # Determine color based on time
+            # Determine event status color (for event column)
             if current_date_header == current_date:
                 if end_time_mins <= current_time_mins:
-                    color = RED  # Past
+                    event_color = RED  # Past
                 elif sort_key <= current_time_mins < end_time_mins:
-                    color = GREEN  # Current
+                    event_color = GREEN  # Current
                 else:
-                    color = YELLOW  # Upcoming
+                    event_color = YELLOW  # Upcoming
             else:
                 # Future dates are yellow
-                color = YELLOW
+                event_color = YELLOW
+            
+            # Get calendar color from config
+            cal_color = COLOR_MAP.get(cal.get('color', ''), RESET)
             
             # Calculate duration in HH:MM format
             duration_mins = end_time_mins - sort_key
@@ -106,7 +137,7 @@ for cal in calendars:
             start_time = f"{start_hour}:{start_min:02d}"
             end_time = f"{end_hour}:{end_min:02d}"
             
-            events.append((date_sort_key, sort_key, current_date_header, color, start_time, end_time, duration_str, cal['prefix'], title))
+            events.append((date_sort_key, sort_key, current_date_header, event_color, cal_color, start_time, end_time, duration_str, cal['prefix'], title, cal.get('id')))
 
 # Sort by date then time
 events.sort(key=lambda x: (x[0], x[1]))
@@ -117,7 +148,7 @@ if events:
     table = None
     total_duration_mins = 0
     
-    for date_sort_key, _, date, color, start_time, end_time, duration, prefix, title in events:
+    for date_sort_key, _, date, event_color, cal_color, start_time, end_time, duration, prefix, title, cal_id in events:
         if date != current_display_date:
             # Print previous table if exists
             if table:
@@ -125,15 +156,15 @@ if events:
                 total_hours = total_duration_mins // 60
                 total_mins = total_duration_mins % 60
                 total_str = f"{total_hours:02d}:{total_mins:02d}"
-                table.add_row(["", "", f"Total: {total_str}", "", ""])
+                table.add_row(["", "", "", "", f"Total: {total_str}"])
                 print(table)
-                print()
+                print("\n")
             
             # Start new table for new date
             current_display_date = date
             total_duration_mins = 0
             table = PrettyTable()
-            table.field_names = ["Start", "End", "Duration", "Calendar", "Event"]
+            table.field_names = ["Start", "End", "Calendar", "Event", "Duration"]
             table.align["Event"] = "l"
             print(f"\n{date}\n")
         
@@ -142,11 +173,11 @@ if events:
         total_duration_mins += int(dur_parts[0]) * 60 + int(dur_parts[1])
         
         table.add_row([
-            f"{color}{start_time}{RESET}",
-            f"{color}{end_time}{RESET}",
-            f"{color}{duration}{RESET}",
-            f"{color}{prefix}{RESET}",
-            f"{color}{title}{RESET}"
+            f"{start_time}",
+            f"{end_time}",
+            f"{cal_color}{prefix}{RESET}",
+            f"{event_color}{title}{RESET}",
+            f"{duration}"
         ])
     
     # Print last table
@@ -154,5 +185,5 @@ if events:
         total_hours = total_duration_mins // 60
         total_mins = total_duration_mins % 60
         total_str = f"{total_hours:02d}:{total_mins:02d}"
-        table.add_row(["", "", f"Total: {total_str}", "", ""])
+        table.add_row(["", "", "", "", f"Total: {total_str}"])
         print(table)
