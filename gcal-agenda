@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+import sys
+import json
+import subprocess
+import re
+import argparse
+from prettytable import PrettyTable
+from datetime import datetime
+
+# Parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument('--calendar', choices=['self', 'work', 'one2n', 'all'], default='all', help='Filter by calendar')
+parser.add_argument('config_file', help='Path to config file')
+parser.add_argument('date_args', nargs='*', help='Date range arguments')
+args_parsed = parser.parse_args()
+
+# Read config from file
+with open(args_parsed.config_file) as f:
+    config = json.load(f)
+
+# Filter calendars based on --calendar flag
+calendars = config.get("calendars", [])
+if args_parsed.calendar != 'all':
+    calendars = [cal for cal in calendars if cal.get('id') == args_parsed.calendar]
+
+args = args_parsed.date_args
+
+# Get current time
+now = datetime.now()
+current_hour = now.hour
+current_min = now.minute
+current_time_mins = current_hour * 60 + current_min
+current_date = now.strftime("%a %b %d %Y")
+
+# ANSI color codes
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+RESET = '\033[0m'
+
+# Month mapping for sorting
+months = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+          "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
+
+# Collect all events with their calendar prefix
+events = []
+
+for cal in calendars:
+    cmd = ["gcalcli", "--calendar", cal["name"], "agenda"] + args + ["--details", "end"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        continue
+    
+    lines = result.stdout.strip().split("\n")
+    current_date_header = None
+    
+    for line in lines:
+        if not line.strip() or "No Events Found" in line:
+            continue
+        
+        # Strip ANSI codes
+        clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
+        
+        # Check if line has date (first event of the day)
+        date_match = re.search(r'(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\w+)\s+(\d+)', clean_line)
+        if date_match:
+            current_date_header = f"{date_match.group(1)} {date_match.group(2)} {date_match.group(3)} {now.year}"
+        
+        # Check if line contains time range
+        time_match = re.search(r'(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s+(.+)$', clean_line)
+        if time_match and current_date_header:
+            start_hour = int(time_match.group(1))
+            start_min = int(time_match.group(2))
+            end_hour = int(time_match.group(3))
+            end_min = int(time_match.group(4))
+            title = time_match.group(5).strip()
+            
+            sort_key = start_hour * 60 + start_min
+            end_time_mins = end_hour * 60 + end_min
+            
+            # Parse date for sorting
+            date_parts = current_date_header.split()
+            month_num = months.get(date_parts[1], 0)
+            day_num = int(date_parts[2])
+            date_sort_key = (month_num, day_num)
+            
+            # Determine color based on time
+            if current_date_header == current_date:
+                if end_time_mins <= current_time_mins:
+                    color = RED  # Past
+                elif sort_key <= current_time_mins < end_time_mins:
+                    color = GREEN  # Current
+                else:
+                    color = YELLOW  # Upcoming
+            else:
+                # Future dates are yellow
+                color = YELLOW
+            
+            # Calculate duration in HH:MM format
+            duration_mins = end_time_mins - sort_key
+            duration_hours = duration_mins // 60
+            duration_remaining_mins = duration_mins % 60
+            duration_str = f"{duration_hours:02d}:{duration_remaining_mins:02d}"
+            
+            start_time = f"{start_hour}:{start_min:02d}"
+            end_time = f"{end_hour}:{end_min:02d}"
+            
+            events.append((date_sort_key, sort_key, current_date_header, color, start_time, end_time, duration_str, cal['prefix'], title))
+
+# Sort by date then time
+events.sort(key=lambda x: (x[0], x[1]))
+
+if events:
+    # Group events by date
+    current_display_date = None
+    table = None
+    total_duration_mins = 0
+    
+    for date_sort_key, _, date, color, start_time, end_time, duration, prefix, title in events:
+        if date != current_display_date:
+            # Print previous table if exists
+            if table:
+                # Add total duration row
+                total_hours = total_duration_mins // 60
+                total_mins = total_duration_mins % 60
+                total_str = f"{total_hours:02d}:{total_mins:02d}"
+                table.add_row(["", "", f"Total: {total_str}", "", ""])
+                print(table)
+                print()
+            
+            # Start new table for new date
+            current_display_date = date
+            total_duration_mins = 0
+            table = PrettyTable()
+            table.field_names = ["Start", "End", "Duration", "Calendar", "Event"]
+            table.align["Event"] = "l"
+            print(f"\n{date}\n")
+        
+        # Add duration to total
+        dur_parts = duration.split(":")
+        total_duration_mins += int(dur_parts[0]) * 60 + int(dur_parts[1])
+        
+        table.add_row([
+            f"{color}{start_time}{RESET}",
+            f"{color}{end_time}{RESET}",
+            f"{color}{duration}{RESET}",
+            f"{color}{prefix}{RESET}",
+            f"{color}{title}{RESET}"
+        ])
+    
+    # Print last table
+    if table:
+        total_hours = total_duration_mins // 60
+        total_mins = total_duration_mins % 60
+        total_str = f"{total_hours:02d}:{total_mins:02d}"
+        table.add_row(["", "", f"Total: {total_str}", "", ""])
+        print(table)
