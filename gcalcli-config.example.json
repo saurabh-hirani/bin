@@ -1,0 +1,23 @@
+{
+  "calendars": [
+    {
+      "id": "work",
+      "name": "work@company.com",
+      "prefix": "[Work]",
+      "color": "blue"
+    },
+    {
+      "id": "personal",
+      "name": "personal@gmail.com",
+      "prefix": "[Personal]",
+      "color": "green"
+    },
+    {
+      "id": "other",
+      "name": "Other Calendar Name",
+      "prefix": "[Other]",
+      "color": "purple"
+    }
+  ],
+  "args": []
+}
