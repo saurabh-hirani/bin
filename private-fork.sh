@@ -20,6 +20,9 @@ cd "$BASE_DIR/$REPO_NAME"
 git remote set-url origin "$NEW_ORIGIN"
 git remote add public "$PUBLIC_REPO"
 
+# Ensure we're on main branch (rename if needed)
+git checkout -b main 2>/dev/null || git checkout main
+
 if [ "$REPO_CREATE" = "1" ]; then
   gh repo create "$NEW_USER/$REPO_NAME" --private
   git push -u origin main
