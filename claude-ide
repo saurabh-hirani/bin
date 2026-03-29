@@ -34,7 +34,10 @@ list_servers() {
   fi
 
   local lock_files
-  mapfile -t lock_files < <(find "$lock_dir" -maxdepth 1 -name "*.lock" -type f -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+  lock_files=()
+  while IFS= read -r f; do
+    lock_files+=("$f")
+  done < <(\find "$lock_dir" -maxdepth 1 -name "*.lock" -type f -exec ls -lT {} \; | sort -nr | awk '{print $NF}')
   if [ ${#lock_files[@]} -eq 0 ]; then
     echo "No IDE servers found"
     return 1
@@ -69,8 +72,9 @@ while [[ $# -gt 0 ]]; do
       list_servers
       exit $?
       ;;
-    [0-9]*)
-      if [ -z "$PORT" ]; then
+    [0-9][0-9][0-9]*)
+      # Only treat as port if it looks like one (3-5 digit number)
+      if [ -z "$PORT" ] && [[ "$1" =~ ^[0-9]{3,5}$ ]]; then
         PORT="$1"
       else
         CLAUDE_ARGS+=("$1")
