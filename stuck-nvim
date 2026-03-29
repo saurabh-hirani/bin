@@ -1,0 +1,3 @@
+#!/bin/bash
+# Find nvim processes with >50% CPU usage (likely stuck/zombie)
+ps aux | grep 'nvim' | grep -v grep | awk '$3 > 50 {printf "PID: %s | CPU: %s%% | Started: %s %s | Cmd: %s %s %s\n", $2, $3, $9, $10, $11, $12, $13}'
