@@ -1,0 +1,144 @@
+#!/bin/bash
+# Tail a GitLab CI job's log output, polling until the job completes.
+
+set -eou pipefail
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") <gitlab-url> <job-id> [options]
+
+Tail a GitLab CI job log, polling until the job finishes.
+
+Arguments:
+  gitlab-url      GitLab instance URL (e.g. https://gitlab.com)
+  job-id          Numeric job ID
+
+Options:
+  --project-id ID   GitLab project ID (required)
+  --interval SECS   Poll interval in seconds (default: 5)
+  --token TOKEN     GitLab private token (default: \$GITLAB_PAT)
+  -h, --help        Show this help message
+
+Examples:
+  $(basename "$0") https://gitlab.com 12345 --project-id 100
+  $(basename "$0") https://gitlab.com 12345 --project-id 100 --interval 10
+  GITLAB_PAT=glpat-xxx $(basename "$0") https://gitlab.com 12345 --project-id 100
+EOF
+}
+
+check_prereqs() {
+  local missing=()
+  for cmd in curl jq; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Missing required commands: ${missing[*]}" >&2
+    exit 1
+  fi
+}
+
+get_job_status() {
+  local gitlab_url="$1" project_id="$2" job_id="$3" token="$4"
+  curl --silent --fail \
+    --header "PRIVATE-TOKEN: ${token}" \
+    "${gitlab_url}/api/v4/projects/${project_id}/jobs/${job_id}" | jq -r '.status'
+}
+
+get_job_log() {
+  local gitlab_url="$1" project_id="$2" job_id="$3" token="$4"
+  curl --silent --fail \
+    --header "PRIVATE-TOKEN: ${token}" \
+    "${gitlab_url}/api/v4/projects/${project_id}/jobs/${job_id}/trace"
+}
+
+main() {
+  local gitlab_url="" job_id="" project_id="" interval=5
+  local token="${GITLAB_PAT:-}"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help) usage; exit 0 ;;
+      --project-id) project_id="${2:?--project-id requires a value}"; shift 2 ;;
+      --interval) interval="${2:?--interval requires a value}"; shift 2 ;;
+      --token) token="${2:?--token requires a value}"; shift 2 ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+      *)
+        if [[ -z "$gitlab_url" ]]; then
+          gitlab_url="$1"
+        elif [[ -z "$job_id" ]]; then
+          job_id="$1"
+        else
+          echo "Unexpected argument: $1" >&2
+          usage
+          exit 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$gitlab_url" ]]; then
+    echo "Error: gitlab-url is required" >&2
+    usage
+    exit 1
+  fi
+  if [[ -z "$job_id" ]]; then
+    echo "Error: job-id is required" >&2
+    usage
+    exit 1
+  fi
+  if [[ -z "$project_id" ]]; then
+    echo "Error: --project-id is required" >&2
+    usage
+    exit 1
+  fi
+  if [[ -z "$token" ]]; then
+    echo "Error: --token or GITLAB_PAT env var is required" >&2
+    exit 1
+  fi
+
+  check_prereqs
+
+  local prev_len=0
+  echo "Tailing job ${job_id} in project ${project_id} (poll every ${interval}s)" >&2
+
+  while true; do
+    local status
+    status=$(get_job_status "$gitlab_url" "$project_id" "$job_id" "$token")
+
+    local log
+    log=$(get_job_log "$gitlab_url" "$project_id" "$job_id" "$token")
+
+    local cur_len=${#log}
+    if [[ $cur_len -gt $prev_len ]]; then
+      echo "${log:$prev_len}"
+      prev_len=$cur_len
+    fi
+
+    case "$status" in
+      success)
+        echo "Job ${job_id} status=success" >&2
+        exit 0
+        ;;
+      failed)
+        echo "Job ${job_id} status=failed" >&2
+        exit 1
+        ;;
+      canceled|skipped)
+        echo "Job ${job_id} status=${status}" >&2
+        exit 1
+        ;;
+      *)
+        sleep "$interval"
+        ;;
+    esac
+  done
+}
+
+main "$@"

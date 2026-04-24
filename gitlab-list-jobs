@@ -1,0 +1,137 @@
+#!/bin/bash
+# List active GitLab CI jobs for a project's latest pipeline(s).
+
+set -eou pipefail
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") <gitlab-url> --project-id <id> [options]
+
+List running/pending jobs for a GitLab project.
+
+Arguments:
+  gitlab-url          GitLab instance URL (e.g. https://gitlab.com)
+
+Options:
+  --project-id ID     GitLab project ID (required)
+  --ref BRANCH        Filter by branch/tag (default: all)
+  --status STATUS     Job status filter: running,pending,created (default: running,pending,created)
+  --pipelines N       Number of recent pipelines to check (default: 3)
+  --token TOKEN       GitLab private token (default: \$GITLAB_PAT)
+  -h, --help          Show this help message
+
+Output:
+  TSV to stdout: pipeline_id<tab>job_id<tab>job_name<tab>status<tab>stage<tab>ref
+
+Examples:
+  $(basename "$0") https://gitlab.com --project-id 100
+  $(basename "$0") https://gitlab.com --project-id 100 --ref master
+  $(basename "$0") https://gitlab.com --project-id 100 | cut -f2 | head -1
+EOF
+}
+
+check_prereqs() {
+  local missing=()
+  for cmd in curl jq; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Missing required commands: ${missing[*]}" >&2
+    exit 1
+  fi
+}
+
+main() {
+  local gitlab_url="" project_id="" ref="" status="running,pending,created"
+  local pipelines=3 token="${GITLAB_PAT:-}"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help) usage; exit 0 ;;
+      --project-id) project_id="${2:?--project-id requires a value}"; shift 2 ;;
+      --ref) ref="$2"; shift 2 ;;
+      --status) status="${2:?--status requires a value}"; shift 2 ;;
+      --pipelines) pipelines="${2:?--pipelines requires a value}"; shift 2 ;;
+      --token) token="${2:?--token requires a value}"; shift 2 ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+      *)
+        if [[ -z "$gitlab_url" ]]; then
+          gitlab_url="$1"
+        else
+          echo "Unexpected argument: $1" >&2
+          usage
+          exit 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$gitlab_url" ]]; then
+    echo "Error: gitlab-url is required" >&2
+    usage
+    exit 1
+  fi
+  if [[ -z "$project_id" ]]; then
+    echo "Error: --project-id is required" >&2
+    usage
+    exit 1
+  fi
+  if [[ -z "$token" ]]; then
+    echo "Error: --token or GITLAB_PAT env var is required" >&2
+    exit 1
+  fi
+
+  check_prereqs
+
+  local pipeline_url="${gitlab_url}/api/v4/projects/${project_id}/pipelines?per_page=${pipelines}"
+  if [[ -n "$ref" ]]; then
+    pipeline_url="${pipeline_url}&ref=${ref}"
+  fi
+
+  local pipeline_ids
+  pipeline_ids=$(curl --silent --fail \
+    --header "PRIVATE-TOKEN: ${token}" \
+    "$pipeline_url" | jq -r '.[].id')
+
+  if [[ -z "$pipeline_ids" ]]; then
+    echo "No pipelines found" >&2
+    exit 1
+  fi
+
+  local found=0
+  local IFS=$'\n'
+  for pid in $pipeline_ids; do
+    local jobs
+    jobs=$(curl --silent --fail \
+      --header "PRIVATE-TOKEN: ${token}" \
+      "${gitlab_url}/api/v4/projects/${project_id}/pipelines/${pid}/jobs?per_page=100")
+
+    local matched
+    matched=$(echo "$jobs" | jq -r --arg status "$status" '
+      ($status | split(",")) as $statuses |
+      .[] | select(.status as $s | $statuses | index($s)) |
+      [(.pipeline.id|tostring), (.id|tostring), .name, .status, .stage, .ref] | @tsv
+    ')
+
+    if [[ -n "$matched" ]]; then
+      echo "$matched"
+      found=$((found + $(echo "$matched" | wc -l)))
+    fi
+  done
+
+  if [[ "$found" -eq 0 ]]; then
+    echo "No active jobs found" >&2
+    exit 1
+  fi
+
+  echo "${found} active job(s) found" >&2
+}
+
+main "$@"

@@ -1,0 +1,103 @@
+#!/bin/bash
+# Search GitLab projects by name and return project ID(s).
+
+set -eou pipefail
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") <gitlab-url> <search-term> [options]
+
+Search GitLab projects and return matching project IDs.
+
+Arguments:
+  gitlab-url      GitLab instance URL (e.g. https://gitlab.com)
+  search-term     Project name to search for
+
+Options:
+  --token TOKEN   GitLab private token (default: \$GITLAB_PAT)
+  -h, --help      Show this help message
+
+Output:
+  TSV to stdout: project_id<tab>path_with_namespace
+
+Examples:
+  $(basename "$0") https://gitlab.com my-project
+  $(basename "$0") https://gitlab.com my-project --token glpat-xxx
+EOF
+}
+
+check_prereqs() {
+  local missing=()
+  for cmd in curl jq; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Missing required commands: ${missing[*]}" >&2
+    exit 1
+  fi
+}
+
+main() {
+  local gitlab_url="" search="" token="${GITLAB_PAT:-}"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help) usage; exit 0 ;;
+      --token) token="${2:?--token requires a value}"; shift 2 ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+      *)
+        if [[ -z "$gitlab_url" ]]; then
+          gitlab_url="$1"
+        elif [[ -z "$search" ]]; then
+          search="$1"
+        else
+          echo "Unexpected argument: $1" >&2
+          usage
+          exit 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$gitlab_url" ]]; then
+    echo "Error: gitlab-url is required" >&2
+    usage
+    exit 1
+  fi
+  if [[ -z "$search" ]]; then
+    echo "Error: search-term is required" >&2
+    usage
+    exit 1
+  fi
+  if [[ -z "$token" ]]; then
+    echo "Error: --token or GITLAB_PAT env var is required" >&2
+    exit 1
+  fi
+
+  check_prereqs
+
+  local result
+  result=$(curl --silent --fail \
+    --header "PRIVATE-TOKEN: ${token}" \
+    "${gitlab_url}/api/v4/projects?search=${search}&per_page=20")
+
+  local count
+  count=$(echo "$result" | jq 'length')
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "No projects found for: ${search}" >&2
+    exit 1
+  fi
+
+  echo "${count} project(s) found" >&2
+  echo "$result" | jq -r '.[] | [.id, .path_with_namespace] | @tsv'
+}
+
+main "$@"
