@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import logging
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+NAMED_RANGES: dict[str, int] = {
+    "today": 0,
+    "yesterday": 1,
+    "last_week": 7,
+    "last_2_weeks": 14,
+    "last_month": 30,
+}
+
+
+def load_args() -> dict:
+    """Parse CLI arguments and return as dictionary."""
+    named = ", ".join(NAMED_RANGES.keys())
+    parser = argparse.ArgumentParser(
+        description="List failed GitLab CI pipelines for a date or date range.",
+        epilog=f"Named ranges: {named}",
+    )
+    parser.add_argument("gitlab_url", help="GitLab instance URL (e.g. https://gitlab.com)")
+    parser.add_argument("--project-id", required=True, help="GitLab project ID")
+    parser.add_argument(
+        "--range",
+        dest="date_range",
+        required=True,
+        help=f"Date (YYYY-MM-DD), range (YYYY-MM-DD..YYYY-MM-DD), or named range ({named})",
+    )
+    parser.add_argument("--ref", default="", help="Filter by branch/tag")
+    parser.add_argument("--status", default="failed", help="Pipeline status filter (default: failed)")
+    parser.add_argument("--per-page", type=int, default=100, help="Results per API page (default: 100)")
+    parser.add_argument("--token", default=os.environ.get("GITLAB_PAT", ""), help="GitLab private token (default: $GITLAB_PAT)")
+    parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"), help="Log level")
+    return vars(parser.parse_args())
+
+
+def validate_args(args: dict) -> bool:
+    """Validate arguments, return True if valid."""
+    if not args["token"]:
+        logging.error("status=validation_failed reason=missing_token hint=set_GITLAB_PAT_or_use_--token")
+        return False
+    return True
+
+
+def update_args(args: dict) -> bool:
+    """Resolve date_range into updated_after/updated_before ISO strings."""
+    raw = args["date_range"]
+    now = datetime.now(tz=timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if raw in NAMED_RANGES:
+        args["updated_after"] = (today_start - timedelta(days=NAMED_RANGES[raw])).isoformat()
+        args["updated_before"] = now.isoformat()
+        return True
+
+    if ".." in raw:
+        parts = raw.split("..", 1)
+        try:
+            start = datetime.strptime(parts[0], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            end = datetime.strptime(parts[1], "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+        except ValueError:
+            logging.error("status=validation_failed reason=invalid_date_range value=%s", raw)
+            return False
+        args["updated_after"] = start.isoformat()
+        args["updated_before"] = end.isoformat()
+        return True
+
+    try:
+        start = datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        logging.error("status=validation_failed reason=invalid_date value=%s", raw)
+        return False
+    args["updated_after"] = start.isoformat()
+    args["updated_before"] = (start + timedelta(days=1)).isoformat()
+    return True
+
+
+def main() -> int:
+    """Main function returning exit code."""
+    args = load_args()
+    logging.basicConfig(
+        level=getattr(logging, args["log_level"].upper()),
+        format="%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stderr,
+    )
+
+    if not validate_args(args):
+        return 1
+    if not update_args(args):
+        return 1
+
+    logging.info(
+        "status=searching project_id=%s range=%s updated_after=%s updated_before=%s",
+        args["project_id"], args["date_range"], args["updated_after"], args["updated_before"],
+    )
+
+    headers = {"PRIVATE-TOKEN": args["token"]}
+    base_url = f"{args['gitlab_url']}/api/v4/projects/{args['project_id']}/pipelines"
+    params: dict = {
+        "status": args["status"],
+        "updated_after": args["updated_after"],
+        "updated_before": args["updated_before"],
+        "per_page": args["per_page"],
+    }
+    if args["ref"]:
+        params["ref"] = args["ref"]
+
+    pipelines: list[dict] = []
+    page = 1
+    while True:
+        params["page"] = page
+        resp = requests.get(base_url, headers=headers, params=params, timeout=30)
+        if resp.status_code != 200:
+            logging.error("status=api_error http_status=%d body=%s", resp.status_code, resp.text)
+            return 1
+        batch = resp.json()
+        if not batch:
+            break
+        pipelines.extend(batch)
+        if len(batch) < args["per_page"]:
+            break
+        page += 1
+
+    results = [
+        {
+            "id": p["id"],
+            "status": p["status"],
+            "ref": p["ref"],
+            "web_url": p["web_url"],
+            "created_at": p.get("created_at", ""),
+            "updated_at": p.get("updated_at", ""),
+            "source": p.get("source", ""),
+        }
+        for p in pipelines
+    ]
+
+    logging.info("status=complete pipelines_found=%d", len(results))
+    json.dump(results, sys.stdout, indent=2)
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

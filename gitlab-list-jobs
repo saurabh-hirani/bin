@@ -1,137 +1,98 @@
-#!/bin/bash
-# List active GitLab CI jobs for a project's latest pipeline(s).
+#!/usr/bin/env python3
 
-set -eou pipefail
+import argparse
+import json
+import logging
+import os
+import sys
 
-usage() {
-  cat >&2 <<EOF
-Usage: $(basename "$0") <gitlab-url> --project-id <id> [options]
+import requests
 
-List running/pending jobs for a GitLab project.
 
-Arguments:
-  gitlab-url          GitLab instance URL (e.g. https://gitlab.com)
+def load_args() -> dict:
+    """Parse CLI arguments and return as dictionary."""
+    parser = argparse.ArgumentParser(
+        description="List active GitLab CI jobs for a project's recent pipelines.",
+    )
+    parser.add_argument("gitlab_url", help="GitLab instance URL (e.g. https://gitlab.com)")
+    parser.add_argument("--project-id", required=True, help="GitLab project ID")
+    parser.add_argument("--ref", default="", help="Filter by branch/tag")
+    parser.add_argument("--status", default="running,pending,created", help="Comma-separated job status filter (default: running,pending,created)")
+    parser.add_argument("--pipelines", type=int, default=3, help="Number of recent pipelines to check (default: 3)")
+    parser.add_argument("--token", default=os.environ.get("GITLAB_PAT", ""), help="GitLab private token (default: $GITLAB_PAT)")
+    parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"), help="Log level")
+    return vars(parser.parse_args())
 
-Options:
-  --project-id ID     GitLab project ID (required)
-  --ref BRANCH        Filter by branch/tag (default: all)
-  --status STATUS     Job status filter: running,pending,created (default: running,pending,created)
-  --pipelines N       Number of recent pipelines to check (default: 3)
-  --token TOKEN       GitLab private token (default: \$GITLAB_PAT)
-  -h, --help          Show this help message
 
-Output:
-  TSV to stdout: pipeline_id<tab>job_id<tab>job_name<tab>status<tab>stage<tab>ref
+def validate_args(args: dict) -> bool:
+    """Validate arguments, return True if valid."""
+    if not args["token"]:
+        logging.error("status=validation_failed reason=missing_token hint=set_GITLAB_PAT_or_use_--token")
+        return False
+    return True
 
-Examples:
-  $(basename "$0") https://gitlab.com --project-id 100
-  $(basename "$0") https://gitlab.com --project-id 100 --ref master
-  $(basename "$0") https://gitlab.com --project-id 100 | cut -f2 | head -1
-EOF
-}
 
-check_prereqs() {
-  local missing=()
-  for cmd in curl jq; do
-    if ! command -v "$cmd" &>/dev/null; then
-      missing+=("$cmd")
-    fi
-  done
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    echo "Missing required commands: ${missing[*]}" >&2
-    exit 1
-  fi
-}
+def update_args(args: dict) -> bool:
+    """Process arguments."""
+    args["status_list"] = [s.strip() for s in args["status"].split(",")]
+    return True
 
-main() {
-  local gitlab_url="" project_id="" ref="" status="running,pending,created"
-  local pipelines=3 token="${GITLAB_PAT:-}"
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -h|--help) usage; exit 0 ;;
-      --project-id) project_id="${2:?--project-id requires a value}"; shift 2 ;;
-      --ref) ref="$2"; shift 2 ;;
-      --status) status="${2:?--status requires a value}"; shift 2 ;;
-      --pipelines) pipelines="${2:?--pipelines requires a value}"; shift 2 ;;
-      --token) token="${2:?--token requires a value}"; shift 2 ;;
-      -*)
-        echo "Unknown option: $1" >&2
-        usage
-        exit 1
-        ;;
-      *)
-        if [[ -z "$gitlab_url" ]]; then
-          gitlab_url="$1"
-        else
-          echo "Unexpected argument: $1" >&2
-          usage
-          exit 1
-        fi
-        shift
-        ;;
-    esac
-  done
+def main() -> int:
+    """Main function returning exit code."""
+    args = load_args()
+    logging.basicConfig(
+        level=getattr(logging, args["log_level"].upper()),
+        format="%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stderr,
+    )
 
-  if [[ -z "$gitlab_url" ]]; then
-    echo "Error: gitlab-url is required" >&2
-    usage
-    exit 1
-  fi
-  if [[ -z "$project_id" ]]; then
-    echo "Error: --project-id is required" >&2
-    usage
-    exit 1
-  fi
-  if [[ -z "$token" ]]; then
-    echo "Error: --token or GITLAB_PAT env var is required" >&2
-    exit 1
-  fi
+    if not validate_args(args):
+        return 1
+    if not update_args(args):
+        return 1
 
-  check_prereqs
+    headers = {"PRIVATE-TOKEN": args["token"]}
+    base = f"{args['gitlab_url']}/api/v4/projects/{args['project_id']}"
 
-  local pipeline_url="${gitlab_url}/api/v4/projects/${project_id}/pipelines?per_page=${pipelines}"
-  if [[ -n "$ref" ]]; then
-    pipeline_url="${pipeline_url}&ref=${ref}"
-  fi
+    params: dict = {"per_page": args["pipelines"]}
+    if args["ref"]:
+        params["ref"] = args["ref"]
 
-  local pipeline_ids
-  pipeline_ids=$(curl --silent --fail \
-    --header "PRIVATE-TOKEN: ${token}" \
-    "$pipeline_url" | jq -r '.[].id')
+    resp = requests.get(f"{base}/pipelines", headers=headers, params=params, timeout=30)
+    if resp.status_code != 200:
+        logging.error("status=api_error http_status=%d body=%s", resp.status_code, resp.text)
+        return 1
 
-  if [[ -z "$pipeline_ids" ]]; then
-    echo "No pipelines found" >&2
-    exit 1
-  fi
+    pipelines = resp.json()
+    if not pipelines:
+        logging.error("status=no_pipelines_found")
+        return 1
 
-  local found=0
-  local IFS=$'\n'
-  for pid in $pipeline_ids; do
-    local jobs
-    jobs=$(curl --silent --fail \
-      --header "PRIVATE-TOKEN: ${token}" \
-      "${gitlab_url}/api/v4/projects/${project_id}/pipelines/${pid}/jobs?per_page=100")
+    results = []
+    for p in pipelines:
+        pid = p["id"]
+        resp = requests.get(f"{base}/pipelines/{pid}/jobs", headers=headers, params={"per_page": 100}, timeout=30)
+        if resp.status_code != 200:
+            logging.error("status=api_error pipeline_id=%d http_status=%d", pid, resp.status_code)
+            continue
+        for j in resp.json():
+            if j["status"] in args["status_list"]:
+                results.append({
+                    "pipeline_id": pid,
+                    "job_id": j["id"],
+                    "job_name": j["name"],
+                    "status": j["status"],
+                    "stage": j["stage"],
+                    "ref": j["ref"],
+                })
 
-    local matched
-    matched=$(echo "$jobs" | jq -r --arg status "$status" '
-      ($status | split(",")) as $statuses |
-      .[] | select(.status as $s | $statuses | index($s)) |
-      [(.pipeline.id|tostring), (.id|tostring), .name, .status, .stage, .ref] | @tsv
-    ')
+    logging.info("status=complete active_jobs_found=%d", len(results))
+    json.dump(results, sys.stdout, indent=2)
+    print()
+    return 0
 
-    if [[ -n "$matched" ]]; then
-      echo "$matched"
-      found=$((found + $(echo "$matched" | wc -l)))
-    fi
-  done
 
-  if [[ "$found" -eq 0 ]]; then
-    echo "No active jobs found" >&2
-    exit 1
-  fi
-
-  echo "${found} active job(s) found" >&2
-}
-
-main "$@"
+if __name__ == "__main__":
+    sys.exit(main())
