@@ -30,10 +30,11 @@ def load_args() -> dict:
     parser.add_argument(
         "--range",
         dest="date_range",
-        required=True,
         help=f"Date (YYYY-MM-DD), range (YYYY-MM-DD..YYYY-MM-DD), or named range ({named})",
     )
+    parser.add_argument("--days", type=int, help="Check last N days")
     parser.add_argument("--ref", default="", help="Filter by branch/tag")
+    parser.add_argument("--job-name", default="", help="Only show pipelines containing this failed job name")
     parser.add_argument("--status", default="failed", help="Pipeline status filter (default: failed)")
     parser.add_argument("--per-page", type=int, default=100, help="Results per API page (default: 100)")
     parser.add_argument("--token", default=os.environ.get("GITLAB_PAT", ""), help="GitLab private token (default: $GITLAB_PAT)")
@@ -46,14 +47,27 @@ def validate_args(args: dict) -> bool:
     if not args["token"]:
         logging.error("status=validation_failed reason=missing_token hint=set_GITLAB_PAT_or_use_--token")
         return False
+    if not args["date_range"] and args["days"] is None:
+        logging.error("status=validation_failed reason=must_specify_--range_or_--days")
+        return False
+    if args["date_range"] and args["days"] is not None:
+        logging.error("status=validation_failed reason=cannot_use_both_--range_and_--days")
+        return False
     return True
 
 
 def update_args(args: dict) -> bool:
     """Resolve date_range into updated_after/updated_before ISO strings."""
-    raw = args["date_range"]
     now = datetime.now(tz=timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if args["days"] is not None:
+        args["date_range"] = f"last_{args['days']}_days"
+        args["updated_after"] = (today_start - timedelta(days=args["days"])).isoformat()
+        args["updated_before"] = now.isoformat()
+        return True
+
+    raw = args["date_range"]
 
     if raw in NAMED_RANGES:
         args["updated_after"] = (today_start - timedelta(days=NAMED_RANGES[raw])).isoformat()
@@ -129,8 +143,10 @@ def main() -> int:
             break
         page += 1
 
-    results = [
-        {
+    results = []
+    jobs_url = f"{args['gitlab_url']}/api/v4/projects/{args['project_id']}/pipelines"
+    for p in pipelines:
+        entry: dict = {
             "id": p["id"],
             "status": p["status"],
             "ref": p["ref"],
@@ -138,9 +154,23 @@ def main() -> int:
             "created_at": p.get("created_at", ""),
             "updated_at": p.get("updated_at", ""),
             "source": p.get("source", ""),
+            "triggered_by": p.get("user", {}).get("username", ""),
+            "failed_jobs": [],
         }
-        for p in pipelines
-    ]
+        resp = requests.get(f"{jobs_url}/{p['id']}/jobs", headers=headers, params={"per_page": 100}, timeout=30)
+        if resp.status_code == 200:
+            entry["failed_jobs"] = [
+                {"job_id": j["id"], "job_name": j["name"], "stage": j["stage"]}
+                for j in resp.json()
+                if j["status"] == "failed"
+            ]
+        else:
+            logging.warning("status=jobs_fetch_failed pipeline_id=%d http_status=%d", p["id"], resp.status_code)
+        logging.debug("status=fetched_jobs pipeline_id=%d failed_jobs=%d", p["id"], len(entry["failed_jobs"]))
+        results.append(entry)
+
+    if args["job_name"]:
+        results = [r for r in results if any(j["job_name"] == args["job_name"] for j in r["failed_jobs"])]
 
     logging.info("status=complete pipelines_found=%d", len(results))
     json.dump(results, sys.stdout, indent=2)
