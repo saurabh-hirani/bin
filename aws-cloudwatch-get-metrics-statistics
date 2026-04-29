@@ -28,8 +28,8 @@ if [[ -z "$time_range" ]]; then
     time_range="1 minute ago"
 fi
 
-[[ "$DEBUG" == "1" ]] && >&2 echo "STATUS:start_time:$start_time" 
-[[ "$DEBUG" == "1" ]] && >&2 echo "STATUS:end_time:$end_time" 
+[[ "$DEBUG" == "1" ]] && >&2 echo "STATUS:start_time:$start_time"
+[[ "$DEBUG" == "1" ]] && >&2 echo "STATUS:end_time:$end_time"
 
 [[ "$DEBUG" == "1" ]] && set -x
 aws cloudwatch get-metric-statistics \

@@ -7,12 +7,21 @@ output_file="/var/tmp/envvars.sh"
 
 # Assume the role
 echo "Assuming role $assume_role_arn"
-content=$(aws sts assume-role --role-arn $assume_role_arn --role-session-name AWSCLI-Session)
+if ! content=$(aws sts assume-role --role-arn "$assume_role_arn" --role-session-name AWSCLI-Session 2>&1); then
+  echo "ERROR: Failed to assume role: $content" >&2
+  exit 1
+fi
 
 # Dump creds in output file
-echo export AWS_ACCESS_KEY_ID="$(echo -e $content | jq -r '.Credentials.AccessKeyId')" > "$output_file"
-echo export AWS_SECRET_ACCESS_KEY="$(echo -e $content | jq -r '.Credentials.SecretAccessKey')" >> "$output_file"
-echo export AWS_SESSION_TOKEN="$(echo -e $content | jq -r '.Credentials.SessionToken')" >> "$output_file"
+access_key=$(echo "$content" | jq -re '.Credentials.AccessKeyId') || { echo "ERROR: Failed to parse AccessKeyId" >&2; exit 1; }
+secret_key=$(echo "$content" | jq -re '.Credentials.SecretAccessKey') || { echo "ERROR: Failed to parse SecretAccessKey" >&2; exit 1; }
+session_token=$(echo "$content" | jq -re '.Credentials.SessionToken') || { echo "ERROR: Failed to parse SessionToken" >&2; exit 1; }
+
+cat > "$output_file" <<EOF
+export AWS_ACCESS_KEY_ID="$access_key"
+export AWS_SECRET_ACCESS_KEY="$secret_key"
+export AWS_SESSION_TOKEN="$session_token"
+EOF
 
 # Clear env to ensure no other variables are set
 unset AWS_PROFILE
@@ -22,6 +31,6 @@ unset AWS_SESSION_TOKEN
 
 # Source new credentials
 echo "Sourcing assumed role creds from $output_file"
-source $output_file
+source "$output_file"
 
 echo "After: $(aws sts get-caller-identity | jq -r '.Arn')"

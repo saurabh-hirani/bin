@@ -28,36 +28,53 @@ Options:
 
 import sys
 
-from docopt import docopt
-from schema import Schema, And, Use, SchemaError
+from docopt import docopt  # CLI argument parsing from docstring usage patterns
+from schema import (
+    Schema,
+    And,
+    Use,
+    SchemaError,
+)  # Argument validation and type coercion
+
 
 def load_args():
-  parsed_docopt = docopt(__doc__)
-  return parsed_docopt
+    parsed_docopt = docopt(__doc__)
+    return parsed_docopt
+
 
 def load_schema():
-  return {
-    'test1': Schema({
-              '--warning': And(Use(int), lambda n: 1 <= n <= 99,
-                               error='Invalid warning val - 1 <= warning <= 99'),
-              '--critical': And(Use(int), lambda n: 1 <= n <= 99,
-                                error='Invalid critical val - 1 <= critical <= 99')
-            })
-  }
+    return {
+        "test1": Schema(
+            {
+                "--warning": And(
+                    Use(int),
+                    lambda n: 1 <= n <= 99,
+                    error="Invalid warning val - 1 <= warning <= 99",
+                ),
+                "--critical": And(
+                    Use(int),
+                    lambda n: 1 <= n <= 99,
+                    error="Invalid critical val - 1 <= critical <= 99",
+                ),
+            }
+        )
+    }
+
 
 def validate_opts(opts):
-  if opts['test1'] is True:
-    cmd_schema = load_schema()['test1']
-    data = {
-      '--warning': opts['--warning'],
-      '--critical': opts['--critical'],
-    }
-    try:
-      validated = cmd_schema.validate(data)
-    except SchemaError as e:
-      sys.exit(e.code)
+    if opts["test1"] is True:
+        cmd_schema = load_schema()["test1"]
+        data = {
+            "--warning": opts["--warning"],
+            "--critical": opts["--critical"],
+        }
+        try:
+            validated = cmd_schema.validate(data)
+        except SchemaError as e:
+            sys.exit(e.code)
 
-if __name__ == '__main__':
-  opts = load_args()
-  opts_schema = load_schema()
-  validate_opts(opts)
+
+if __name__ == "__main__":
+    opts = load_args()
+    opts_schema = load_schema()
+    validate_opts(opts)
