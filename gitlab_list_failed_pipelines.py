@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+"""List failed GitLab CI pipelines for a date or date range."""
+
 import argparse
 import json
 import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import requests
 
@@ -28,8 +30,7 @@ def load_args() -> dict:
     parser.add_argument("gitlab_url", help="GitLab instance URL (e.g. https://gitlab.com)")
     parser.add_argument("--project-id", required=True, help="GitLab project ID")
     parser.add_argument(
-        "--range",
-        dest="date_range",
+        "--range", dest="date_range",
         help=f"Date (YYYY-MM-DD), range (YYYY-MM-DD..YYYY-MM-DD), or named range ({named})",
     )
     parser.add_argument("--days", type=int, help="Check last N days")
@@ -37,7 +38,10 @@ def load_args() -> dict:
     parser.add_argument("--job-name", default="", help="Only show pipelines containing this failed job name")
     parser.add_argument("--status", default="failed", help="Pipeline status filter (default: failed)")
     parser.add_argument("--per-page", type=int, default=100, help="Results per API page (default: 100)")
-    parser.add_argument("--token", default=os.environ.get("GITLAB_PAT", ""), help="GitLab private token (default: $GITLAB_PAT)")
+    parser.add_argument(
+        "--token", default=os.environ.get("GITLAB_PAT", ""),
+        help="GitLab private token (default: $GITLAB_PAT)",
+    )
     parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"), help="Log level")
     return vars(parser.parse_args())
 
@@ -58,7 +62,7 @@ def validate_args(args: dict) -> bool:
 
 def update_args(args: dict) -> bool:
     """Resolve date_range into updated_after/updated_before ISO strings."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     if args["days"] is not None:
@@ -77,19 +81,19 @@ def update_args(args: dict) -> bool:
     if ".." in raw:
         parts = raw.split("..", 1)
         try:
-            start = datetime.strptime(parts[0], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            end = datetime.strptime(parts[1], "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+            start = datetime.strptime(parts[0], "%Y-%m-%d").replace(tzinfo=UTC)
+            end_dt = datetime.strptime(parts[1], "%Y-%m-%d").replace(tzinfo=UTC) + timedelta(days=1)
         except ValueError:
-            logging.error("status=validation_failed reason=invalid_date_range value=%s", raw)
+            logging.exception("status=validation_failed reason=invalid_date_range value=%s", raw)
             return False
         args["updated_after"] = start.isoformat()
-        args["updated_before"] = end.isoformat()
+        args["updated_before"] = end_dt.isoformat()
         return True
 
     try:
-        start = datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        start = datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=UTC)
     except ValueError:
-        logging.error("status=validation_failed reason=invalid_date value=%s", raw)
+        logging.exception("status=validation_failed reason=invalid_date value=%s", raw)
         return False
     args["updated_after"] = start.isoformat()
     args["updated_before"] = (start + timedelta(days=1)).isoformat()
@@ -118,7 +122,7 @@ def main() -> int:
 
     headers = {"PRIVATE-TOKEN": args["token"]}
     base_url = f"{args['gitlab_url']}/api/v4/projects/{args['project_id']}/pipelines"
-    params: dict = {
+    params = {
         "status": args["status"],
         "updated_after": args["updated_after"],
         "updated_before": args["updated_before"],
@@ -145,32 +149,43 @@ def main() -> int:
 
     results = []
     jobs_url = f"{args['gitlab_url']}/api/v4/projects/{args['project_id']}/pipelines"
-    for p in pipelines:
+    for pipeline in pipelines:
         entry: dict = {
-            "id": p["id"],
-            "status": p["status"],
-            "ref": p["ref"],
-            "web_url": p["web_url"],
-            "created_at": p.get("created_at", ""),
-            "updated_at": p.get("updated_at", ""),
-            "source": p.get("source", ""),
-            "triggered_by": p.get("user", {}).get("username", ""),
+            "id": pipeline["id"],
+            "status": pipeline["status"],
+            "ref": pipeline["ref"],
+            "web_url": pipeline["web_url"],
+            "created_at": pipeline.get("created_at", ""),
+            "updated_at": pipeline.get("updated_at", ""),
+            "source": pipeline.get("source", ""),
+            "triggered_by": pipeline.get("user", {}).get("username", ""),
             "failed_jobs": [],
         }
-        resp = requests.get(f"{jobs_url}/{p['id']}/jobs", headers=headers, params={"per_page": 100}, timeout=30)
+        resp = requests.get(
+            f"{jobs_url}/{pipeline['id']}/jobs", headers=headers, params={"per_page": 100}, timeout=30,
+        )
         if resp.status_code == 200:
             entry["failed_jobs"] = [
-                {"job_id": j["id"], "job_name": j["name"], "stage": j["stage"]}
-                for j in resp.json()
-                if j["status"] == "failed"
+                {"job_id": job["id"], "job_name": job["name"], "stage": job["stage"]}
+                for job in resp.json()
+                if job["status"] == "failed"
             ]
         else:
-            logging.warning("status=jobs_fetch_failed pipeline_id=%d http_status=%d", p["id"], resp.status_code)
-        logging.debug("status=fetched_jobs pipeline_id=%d failed_jobs=%d", p["id"], len(entry["failed_jobs"]))
+            logging.warning(
+                "status=jobs_fetch_failed pipeline_id=%d http_status=%d",
+                pipeline["id"], resp.status_code,
+            )
+        logging.debug(
+            "status=fetched_jobs pipeline_id=%d failed_jobs=%d",
+            pipeline["id"], len(entry["failed_jobs"]),
+        )
         results.append(entry)
 
     if args["job_name"]:
-        results = [r for r in results if any(j["job_name"] == args["job_name"] for j in r["failed_jobs"])]
+        results = [
+            result for result in results
+            if any(job["job_name"] == args["job_name"] for job in result["failed_jobs"])
+        ]
 
     logging.info("status=complete pipelines_found=%d", len(results))
     json.dump(results, sys.stdout, indent=2)
