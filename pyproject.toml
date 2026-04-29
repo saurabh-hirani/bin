@@ -1,0 +1,81 @@
+[tool.black]
+# How many characters per line to allow.
+line-length = 119
+
+# A regular expression that matches files and directories that
+# should be included on recursive searches. An empty value means
+# all files are included regardless of the name.  Use forward
+# slashes for directories on all platforms (Windows, too).
+# Exclusions are calculated first, inclusions later.
+
+exclude = '''
+(
+    \.git
+  | test/
+)
+'''
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "ALL", # include all the rules, including new ones
+]
+ignore = [
+  "D",
+  "PTH", # Path vs os.path errors
+  "S101", # Checks for uses of the assert keyword.
+  "EXE001", # Checks for a shebang directive in a file that is not executable.
+  "PTH120", # Checks for uses of os.path.dirname.
+  "PTH100", # Checks for uses of os.path.abspath.
+  "E402", # Checks for imports that are not at the top of the file.
+  "PLR2004", # Checks for the use of unnamed numerical constants ("magic") values in comparisons.
+  "LOG015", # Checks for usages of the following logging top-level functions: debug, info, warn, warning, error, critical, log, exception.
+  "G004", # Checks for uses of f-strings to format logging messages.
+  "ERA001", # Checks for commented-out Python code.
+  "PTH123", # Checks for uses of the open() builtin.
+  "COM812", # Ignore flake8-commas
+  "PLR0913", # Consider for later - Checks for function definitions that include too many arguments.
+  "FBT002", # Checks for the use of boolean positional arguments in function definitions
+  "PERF401", # Checks for for loops that can be replaced by a list comprehension.
+  "PLR0911", # Checks for functions or methods with too many return statements.
+  "T201", # Checks for print statements.
+  "PERF203", # Checks for uses of except handling via try-except within for and while loops.
+  "C901" # Checks for functions with a high McCabe complexity.
+]
+
+[tool.basedpyright]
+# A more relaxed type checking mode for gradual typing.
+# Use "standard" for a middle ground or "strict" for full enforcement.
+typeCheckingMode = "basic"
+
+# Allow the use of `Any` without explicit annotations.
+reportMissingTypeStubs = "none"
+reportUnknownMemberType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownParameterType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownVariableType = "none"
+
+# Don't report errors for imports that have no type information.
+reportMissingImports = "none"
+
+# Allow functions without type annotations to be called.
+reportUntypedFunctionDecorator = "none"
+reportUntypedClassDecorator = "none"
+reportUntypedNamedTuple = "none"
+
+# Allow incomplete stub packages.
+reportIncompleteStub = "none"
+
+# Don't report argument type mismatches.
+reportCallInDefaultInitializer = "none"
+reportAssignmentType = "none"
+reportArgumentType = "none"
+# reportUndefinedVariable = "none
+
+[tool.uv]
+exclude-newer = "7 days"
+
