@@ -53,7 +53,8 @@ def load_args():
     """Parse cli"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", "-u", help="URL to query", required=True)
-    parser.add_argument("--query-file", "-f", help="File containg queries to run", required=True)
+    parser.add_argument("--query-file", "-f", help="File containg queries to run", required=False, default=None)
+    parser.add_argument("--query", "-q", help="Inline query string(s)", nargs="+", required=False, default=None)
     parser.add_argument("--lookback", "-l", help="Lookback seconds for metrics url query", default=-1)
     parser.add_argument(
         "--start",
@@ -97,7 +98,11 @@ def validate_args(args):
         logging.error("Cannot specify --lookback, --start, --end together.")
         return False
 
-    if not os.path.exists(args["query_file"]):
+    if args["query_file"] is None and args["query"] is None:
+        logging.error("Must specify either --query-file (-f) or --query (-q)")
+        return False
+
+    if args["query_file"] is not None and not os.path.exists(args["query_file"]):
         logging.error("Query file %s does not exist", args["query_file"])
         return False
 
@@ -139,8 +144,11 @@ def update_args(args):
         logging.error("start = %d > end = %d", args["start"], args["end"])
         return False
 
-    with open(args["query_file"], "r") as fd:
-        args["queries"] = [x.strip() for x in fd.readlines() if "#" not in x]
+    if args["query"] is not None:
+        args["queries"] = args["query"]
+    else:
+        with open(args["query_file"], "r") as fd:
+            args["queries"] = [x.strip() for x in fd.readlines() if "#" not in x]
 
     if args["trace"]:
         args["trace"] = 1
@@ -215,6 +223,9 @@ def query_url(args):
                     response.text,
                 )
             query_output["response"] = response.json()
+
+            result_count = len(query_output["response"].get("data", {}).get("result", []))
+            logging.info("result_count=%d query=%s", result_count, query_str)
 
             if args["indent"]:
                 print(json.dumps(query_output, default=str, indent=2))
