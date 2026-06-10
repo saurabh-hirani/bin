@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Rebase current branch onto a target branch (fetches latest first)
+
+TARGET="${1:-main}"
+CURRENT=$(git branch --show-current)
+
+if [[ -z "$CURRENT" ]]; then
+  echo "ERROR: not on a branch (detached HEAD?)" >&2
+  exit 1
+fi
+
+if [[ "$CURRENT" == "$TARGET" ]]; then
+  echo "ERROR: already on $TARGET" >&2
+  exit 1
+fi
+
+echo "action=fetch target=origin/$TARGET"
+git fetch origin "$TARGET" --quiet
+
+BEHIND=$(git log --oneline "$CURRENT..origin/$TARGET" | wc -l | tr -d ' ')
+
+if [[ "$BEHIND" -eq 0 ]]; then
+  echo "status=up-to-date rebase_required=no"
+  exit 0
+fi
+
+echo "action=rebase branch=$CURRENT onto=origin/$TARGET behind=$BEHIND"
+if git rebase "origin/$TARGET"; then
+  echo "status=success branch=$CURRENT rebased_onto=origin/$TARGET"
+  echo ""
+  echo "Ready to push: git push --force-with-lease"
+else
+  echo "status=conflict" >&2
+  echo "Fix conflicts, then: git rebase --continue" >&2
+  echo "Or abort: git rebase --abort" >&2
+  exit 1
+fi
