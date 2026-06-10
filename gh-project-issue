@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Create a GitHub issue and add it to a Projects V2 board."""
+
+import argparse
+import json
+import logging
+import os
+import sys
+
+import requests
+
+
+def load_args() -> dict:
+    """Parse CLI arguments and return as dictionary."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--title", required=True, help="Issue title")
+    parser.add_argument("--description", required=True, help="Issue body (markdown string or file path)")
+    parser.add_argument("--repo", required=True, help="GitHub repo (owner/name)")
+    parser.add_argument("--token", required=True, help="GitHub PAT")
+    parser.add_argument("--project-id", required=True, help="Project node ID")
+    parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"), help="Log level")
+    return vars(parser.parse_args())
+
+
+def validate_args(args: dict) -> bool:
+    """Validate arguments, return True if valid."""
+    return True
+
+
+def update_args(args: dict) -> bool:
+    """Process/enhance arguments, return True if successful."""
+    desc = args["description"]
+    if os.path.isfile(desc):
+        logging.info("status=reading_description_from_file path=%s", desc)
+        with open(desc) as f:
+            args["description"] = f.read()
+    return True
+
+
+def main() -> int:
+    """Main function returning exit code."""
+    args = load_args()
+    logging.basicConfig(
+        level=args["log_level"],
+        format="%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stderr,
+    )
+
+    if not validate_args(args):
+        return 1
+    if not update_args(args):
+        return 1
+
+    headers = {
+        "Authorization": f"Bearer {args['token']}",
+        "Accept": "application/vnd.github+json",
+    }
+
+    # Create issue on repo
+    logging.info("status=creating_issue repo=%s title=%s", args["repo"], args["title"])
+    resp = requests.post(
+        f"https://api.github.com/repos/{args['repo']}/issues",
+        headers=headers,
+        json={"title": args["title"], "body": args["description"]},
+    )
+
+    if resp.status_code != 201:
+        logging.error("status=issue_creation_failed code=%d body=%s", resp.status_code, resp.text)
+        return 1
+
+    issue = resp.json()
+    issue_node_id = issue["node_id"]
+    logging.info("status=issue_created number=%d url=%s", issue["number"], issue["html_url"])
+
+    # Add issue to project board
+    query = """
+    mutation($projectId: ID!, $contentId: ID!) {
+      addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+        item { id }
+      }
+    }
+    """
+    resp = requests.post(
+        "https://api.github.com/graphql",
+        headers={"Authorization": f"Bearer {args['token']}", "Content-Type": "application/json"},
+        json={"query": query, "variables": {"projectId": args["project_id"], "contentId": issue_node_id}},
+    )
+
+    data = resp.json()
+    if data.get("errors"):
+        logging.error("status=project_add_failed errors=%s", json.dumps(data["errors"]))
+        logging.info("status=issue_created_but_not_added_to_project url=%s", issue["html_url"])
+    else:
+        logging.info("status=added_to_project item_id=%s", data["data"]["addProjectV2ItemById"]["item"]["id"])
+
+    json.dump({"number": issue["number"], "url": issue["html_url"]}, sys.stdout)
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
