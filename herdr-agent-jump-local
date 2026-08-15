@@ -1,0 +1,25 @@
+#!/bin/bash
+set -euo pipefail
+
+# Get current workspace
+current_ws=$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[] | select(.focused==true) | .workspace_id')
+current_ws_label=$(herdr workspace list 2>/dev/null | jq -r '.result.workspaces[] | select(.focused==true) | .label')
+
+# Get tab labels
+tab_labels=$(herdr tab list 2>/dev/null | jq -r '.result.tabs[] | "\(.tab_id)=\(.label)"')
+
+# Get agent panes for current workspace only
+selected=$(herdr pane list 2>/dev/null | jq -r --arg ws "$current_ws" '.result.panes[] | select(.agent != null and .workspace_id == $ws) | "\(.pane_id) \(.tab_id) \(.agent)"' | while read -r pane_id tab_id agent; do
+    tab_label=$(echo "$tab_labels" | grep "^${tab_id}=" | cut -d= -f2)
+    echo "$pane_id $tab_id $tab_label / $agent"
+done | fzf --reverse --with-nth=3.. --prompt="agent ($current_ws_label)> ")
+
+if [[ -z "$selected" ]]; then
+    exit 0
+fi
+
+pane_id=$(echo "$selected" | awk '{print $1}')
+tab_id=$(echo "$selected" | awk '{print $2}')
+
+herdr tab focus "$tab_id" 2>/dev/null
+herdr pane focus --pane "$pane_id" --direction left 2>/dev/null || true
