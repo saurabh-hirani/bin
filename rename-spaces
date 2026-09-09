@@ -1,0 +1,130 @@
+#!/bin/bash
+# Rename files in a directory, replacing spaces in filenames with a given char.
+
+set -eou pipefail
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") <dir> [char] [options]
+
+Rename files directly inside <dir>, replacing each space in the filename with
+<char>. Only top-level files are processed (not subdirectories, not recursive).
+
+Arguments:
+  dir             Directory whose files will be renamed
+  char            Character to replace spaces with (default: -)
+
+Options:
+  -n, --dry-run   Show what would be renamed without renaming
+  -h, --help      Show this help message
+
+Examples:
+  $(basename "$0") /Users/Saurabh.Hirani/Downloads/screenshots
+  $(basename "$0") /Users/Saurabh.Hirani/Downloads/screenshots _
+  $(basename "$0") "/Users/Saurabh.Hirani/Downloads/screenshots" _ --dry-run
+EOF
+}
+
+check_prereqs() {
+  local missing=()
+  for cmd in mv basename; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Missing required commands: ${missing[*]}" >&2
+    exit 1
+  fi
+}
+
+main() {
+  local dir=""
+  local char="-"
+  local char_set="false"
+  local dry_run="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      -n | --dry-run)
+        dry_run="true"
+        shift
+        ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+      *)
+        if [[ -z "$dir" ]]; then
+          dir="$1"
+        elif [[ "$char_set" == "false" ]]; then
+          char="$1"
+          char_set="true"
+        else
+          echo "Unexpected argument: $1" >&2
+          usage
+          exit 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$dir" ]]; then
+    echo "Missing required argument: dir" >&2
+    usage
+    exit 1
+  fi
+
+  if [[ ! -d "$dir" ]]; then
+    echo "Not a directory: $dir" >&2
+    exit 1
+  fi
+
+  check_prereqs
+
+  local renamed=0
+  local skipped=0
+
+  # Iterate over top-level entries safely, handling spaces in names.
+  for path in "$dir"/*; do
+    # Skip if glob matched nothing.
+    [[ -e "$path" ]] || continue
+    # Only process regular files.
+    [[ -f "$path" ]] || continue
+
+    local base
+    base="$(basename "$path")"
+
+    # No space in the name, nothing to do.
+    if [[ "$base" != *" "* ]]; then
+      continue
+    fi
+
+    local new_base="${base// /$char}"
+    local new_path="$dir/$new_base"
+
+    if [[ -e "$new_path" ]]; then
+      echo "status=skipped reason=target_exists from=\"$base\" to=\"$new_base\"" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    if [[ "$dry_run" == "true" ]]; then
+      echo "status=would_rename from=\"$base\" to=\"$new_base\"" >&2
+    else
+      mv -- "$path" "$new_path"
+      echo "status=renamed from=\"$base\" to=\"$new_base\"" >&2
+    fi
+    renamed=$((renamed + 1))
+  done
+
+  echo "status=done renamed=$renamed skipped=$skipped char=\"$char\" dry_run=$dry_run" >&2
+}
+
+main "$@"
