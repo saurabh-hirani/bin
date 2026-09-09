@@ -10,6 +10,7 @@ import sys
 import requests
 
 
+
 def load_args() -> dict:
     """Parse CLI arguments and return as dictionary."""
     parser = argparse.ArgumentParser(description=__doc__)

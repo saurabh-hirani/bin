@@ -29,6 +29,8 @@ def tail_job(
     logging.info("status=tailing job_id=%s project_id=%s interval=%ds", job_id, project_id, interval)
 
     prev_len = 0
+    idle_polls = 0
+    heartbeat_every = max(1, 30 // interval)
     while True:
         resp = requests.get(base, headers=headers, timeout=30)
         if resp.status_code != 200:
@@ -49,6 +51,16 @@ def tail_job(
             output.write(new_text)
             output.flush()
             prev_len = len(log)
+            idle_polls = 0
+        else:
+            idle_polls += 1
+            if idle_polls % heartbeat_every == 0:
+                logging.info(
+                    "status=waiting job_status=%s trace_bytes=%d idle_s=%d",
+                    status,
+                    prev_len,
+                    idle_polls * interval,
+                )
 
         if status in TERMINAL_STATUSES:
             logging.info("status=complete job_status=%s", status)

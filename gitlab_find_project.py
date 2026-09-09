@@ -36,7 +36,8 @@ def load_args() -> dict:
     parser.add_argument("gitlab_url", help="GitLab instance URL (e.g. https://gitlab.com)")
     parser.add_argument("search_term", help="Project name to search for")
     parser.add_argument(
-        "--token", default=os.environ.get("GITLAB_PAT", ""),
+        "--token",
+        default=os.environ.get("GITLAB_PAT", ""),
         help="GitLab private token (default: $GITLAB_PAT)",
     )
     parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "INFO"), help="Log level")
