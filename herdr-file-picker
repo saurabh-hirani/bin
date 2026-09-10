@@ -1,0 +1,393 @@
+#!/usr/bin/env bash
+# herdr-native port of tmux-file-picker.
+#
+# Fuzzy-pick file(s) or directories with fd (falling back to find) + fzf and
+# type the selected path(s) into the active herdr pane.
+#
+# Behavior depends on the target pane:
+#   - Agent pane (per `herdr pane list`): paths are inserted as '@' file-mentions.
+#   - Shell pane: files are prefixed with an editor command (default "vim") and
+#     directories with "cd", so the line is ready to run. Paths are shell-escaped.
+#     Override the commands with HERDR_FILE_PICKER_FILE_CMD / _DIR_CMD.
+#
+# Scope: the picker searches the pane's current directory by default. With
+# --git-root it searches the whole repository from its root and shell panes cd
+# to the root first so the selected path stays valid.
+#
+# Runs inside a herdr popup, which provides:
+#   HERDR_ACTIVE_PANE_ID   - pane id the popup was launched from
+#   HERDR_ACTIVE_PANE_CWD  - that pane's current working directory
+#
+# Flags:
+#   -g, --git-root      search the whole git repo from its root
+#   --zoxide            pick a base dir from zoxide history first
+#   --dir-only          with --zoxide: just insert the chosen dir(s), no file step
+#   -d, --directories   pick directories instead of files
+#   --include-ignored   include gitignored entries
+#   <path>              search under an explicit path instead of the pane cwd
+set -euo pipefail
+
+_select_zoxide_dir() {
+	if ! command -v zoxide >/dev/null 2>&1; then
+		echo "Error: Required command 'zoxide' not found. Please install it." >&2
+		exit 1
+	fi
+
+	local zoxide_preview_cmd='ls -ap --color=always {}'
+	if command -v tree >/dev/null 2>&1; then
+		zoxide_preview_cmd='tree -C {} | head -n 30'
+	fi
+
+	local dirs
+	dirs=$(zoxide query -l | fzf --multi --reverse --preview "$zoxide_preview_cmd" || true)
+	echo "$dirs"
+}
+
+main() {
+	local pane_id
+	local pane_dir
+	pane_id="${HERDR_ACTIVE_PANE_ID:-}"
+	pane_dir="${HERDR_ACTIVE_PANE_CWD:-$PWD}"
+
+	if [[ -z "$pane_id" ]]; then
+		echo "Error: HERDR_ACTIVE_PANE_ID is not set. Run this from a herdr popup." >&2
+		exit 1
+	fi
+
+	# Command prefixes used only for shell panes (agent panes get @-mentions).
+	# Files are opened with an editor; directories are entered with cd.
+	# Override via env, e.g. HERDR_FILE_PICKER_FILE_CMD=nvim.
+	local file_cmd="${HERDR_FILE_PICKER_FILE_CMD:-vim}"
+	local dir_cmd="${HERDR_FILE_PICKER_DIR_CMD:-cd}"
+
+	# --- Argument Parsing ---
+	local use_git_root=false
+	local use_zoxide=false
+	local dir_only=false
+	local select_directories=false
+	local include_ignored=false
+	local path_arg=""
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--git-root|-g)
+				use_git_root=true
+				shift
+				;;
+			--zoxide)
+				use_zoxide=true
+				shift
+				;;
+			--dir-only)
+				dir_only=true
+				shift
+				;;
+			--directories|-d)
+				select_directories=true
+				shift
+				;;
+			--include-ignored)
+				include_ignored=true
+				shift
+				;;
+			-*)
+				echo "Error: Unknown option '$1'" >&2
+				exit 1
+				;;
+			*)
+				if [[ -n "$path_arg" ]]; then
+					echo "Error: Only one path argument is allowed." >&2
+					exit 1
+				fi
+				path_arg="$1"
+				shift
+				;;
+		esac
+	done
+
+	# Check for conflicting arguments
+	if $use_zoxide && [[ -n "$path_arg" ]]; then
+		echo "Error: The --zoxide flag cannot be used with a path argument." >&2
+		exit 1
+	fi
+
+	if $dir_only && ! $use_zoxide; then
+		echo "Error: The --dir-only flag can only be used with --zoxide." >&2
+		exit 1
+	fi
+
+	local search_dirs=()
+
+	if $use_zoxide; then
+		local zoxide_output
+		zoxide_output=$(_select_zoxide_dir)
+		if [[ -z "$zoxide_output" ]]; then
+			exit 0
+		fi
+		while IFS= read -r line; do
+			[[ -n "$line" ]] && search_dirs+=("$line")
+		done <<< "$zoxide_output"
+	else
+		local search_dir="${path_arg:-$pane_dir}"
+
+		if [[ ! "$search_dir" = /* ]]; then
+			search_dir="$pane_dir/$search_dir"
+		fi
+
+		local realpath_cmd="realpath"
+		[[ "$OSTYPE" == "darwin"* ]] && realpath_cmd="grealpath"
+
+		if command -v "$realpath_cmd" >/dev/null 2>&1; then
+			search_dir=$("$realpath_cmd" -m "$search_dir")
+		fi
+
+		# --git-root: search the whole repository from its root so the picker
+		# lists every entry in the repo. Paths are then repo-root-relative (clean
+		# display); shell panes cd to the root first to keep them valid.
+		if $use_git_root; then
+			local resolved_git_root
+			resolved_git_root=$(git -C "$search_dir" rev-parse --show-toplevel 2>/dev/null || true)
+			if [[ -z "$resolved_git_root" ]]; then
+				echo "Error: --git-root used, but '$search_dir' is not inside a git repository." >&2
+				exit 1
+			fi
+			search_dir="$resolved_git_root"
+		fi
+
+		search_dirs=("$search_dir")
+	fi
+
+	# Repo root for the cd prefix (empty unless --git-root).
+	local git_root=""
+	if $use_git_root; then
+		git_root="${search_dirs[0]}"
+	fi
+
+	# Verify all directories exist
+	for dir in "${search_dirs[@]}"; do
+		if [[ ! -d "$dir" ]]; then
+			echo "Error: Directory '$dir' does not exist." >&2
+			exit 1
+		fi
+	done
+
+	# --- Agent-aware mode detection (herdr-native) ---
+	# The pane is "at prefix mode" (agent file-mention syntax) when herdr reports
+	# an agent attached to this pane.
+	local at_prefix_mode=false
+	if command -v herdr >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+		local pane_agent
+		pane_agent=$(herdr pane list 2>/dev/null \
+			| jq -r --arg pid "$pane_id" '.result.panes[] | select(.pane_id == $pid) | .agent // empty')
+		if [[ -n "$pane_agent" ]]; then
+			at_prefix_mode=true
+		fi
+	fi
+
+	# If --dir-only is set, just output the directory paths and exit
+	if $dir_only; then
+		local output_str=""
+		if $at_prefix_mode; then
+			printf -v output_str "@%s " "${search_dirs[@]}"
+		else
+			local escaped_paths=()
+			for dir in "${search_dirs[@]}"; do
+				local escaped
+				printf -v escaped "%q" "$dir"
+				escaped_paths+=("$escaped")
+			done
+			# Shell pane: prefix with a "cd" command so the dir can be entered.
+			output_str="${dir_cmd} $(printf "%s " "${escaped_paths[@]}")"
+		fi
+		herdr pane send-text "$pane_id" "$output_str"
+		exit 0
+	fi
+
+	# --- Backend detection: prefer fd/fdfind, fall back to find ---
+	local list_backend
+	if command -v fd >/dev/null 2>&1; then
+		list_backend="fd"
+	elif command -v fdfind >/dev/null 2>&1; then
+		list_backend="fdfind"
+	else
+		list_backend="find"
+	fi
+
+	# --- File/Directory Selection ---
+	local -a fd_flags
+	local find_type
+	local preview_cmd
+
+	if $select_directories; then
+		read -r -a fd_flags <<< "${HERDR_FILE_PICKER_FD_FLAGS:--H --follow --type d --exclude .git}"
+		find_type="d"
+
+		if $include_ignored && [[ -z "${HERDR_FILE_PICKER_FD_FLAGS+x}" ]]; then
+			fd_flags+=(--no-ignore)
+		fi
+
+		if command -v tree >/dev/null 2>&1; then
+			preview_cmd='tree -C {} | head -n 30'
+		else
+			preview_cmd='ls -ap --color=always {}'
+		fi
+	else
+		read -r -a fd_flags <<< "${HERDR_FILE_PICKER_FD_FLAGS:--H --follow --type f --exclude .git}"
+		find_type="f"
+
+		if $include_ignored && [[ -z "${HERDR_FILE_PICKER_FD_FLAGS+x}" ]]; then
+			fd_flags+=(--no-ignore)
+		fi
+
+		if command -v bat >/dev/null 2>&1; then
+			preview_cmd="bat --style=numbers --color=always {}"
+		elif command -v batcat >/dev/null 2>&1; then
+			preview_cmd="batcat --style=numbers --color=always {}"
+		else
+			preview_cmd="cat {}"
+		fi
+	fi
+
+	# list_entries emits candidate paths on stdout, matching fd's output shape:
+	#   - single-dir mode: run from inside the dir, print relative paths (no ./ prefix)
+	#   - multi-dir mode:  print absolute paths, one root at a time
+	# The find fallback prunes .git and follows symlinks (-L) to mirror fd's
+	# defaults. Note: find cannot honor .gitignore, so --include-ignored is a
+	# no-op under find (everything is listed either way).
+	list_entries() {
+		local mode="$1"; shift # "single" or "multi"
+		if [[ "$list_backend" != "find" ]]; then
+			if [[ "$mode" == "single" ]]; then
+				"$list_backend" "${fd_flags[@]}"
+			else
+				"$list_backend" "${fd_flags[@]}" "$@"
+			fi
+			return
+		fi
+
+		# find fallback
+		local root
+		if [[ "$mode" == "single" ]]; then
+			find -L . -name .git -prune -o -type "$find_type" -print 2>/dev/null | sed 's|^\./||'
+		else
+			for root in "$@"; do
+				find -L "$root" -name .git -prune -o -type "$find_type" -print 2>/dev/null
+			done
+		fi
+	}
+
+	local selected_files_str
+
+	# fzf prompt/header showing the search scope. For --git-root the header shows
+	# the repo root, and entries display as clean repo-root-relative paths.
+	local fzf_prompt
+	local fzf_header
+	if $use_git_root && $select_directories; then
+		fzf_prompt="git-dir> "
+		fzf_header="repo dirs: ${search_dirs[0]}"
+	elif $use_git_root; then
+		fzf_prompt="git-file> "
+		fzf_header="repo files: ${search_dirs[0]}"
+	elif $select_directories; then
+		fzf_prompt="dir> "
+		fzf_header="dirs under: ${search_dirs[0]}"
+	else
+		fzf_prompt="file> "
+		fzf_header="files under: ${search_dirs[0]}"
+	fi
+
+	if [[ ${#search_dirs[@]} -eq 1 ]]; then
+		selected_files_str=$(
+			cd "${search_dirs[0]}"
+			list_entries single | fzf --multi --reverse --freeze-right=1 --tiebreak=index --prompt "$fzf_prompt" --header "$fzf_header" --preview "$preview_cmd" --preview-window hidden || true
+		)
+	else
+		selected_files_str=$(list_entries multi "${search_dirs[@]}" | fzf --multi --reverse --freeze-right=1 --tiebreak=index --prompt "$fzf_prompt" --header "$fzf_header" --preview "$preview_cmd" --preview-window hidden || true)
+	fi
+
+	if [[ -z "$selected_files_str" ]]; then
+		if $use_zoxide; then
+			:
+		else
+			exit 0
+		fi
+	fi
+
+	# --- Path Processing ---
+	local selected_files=()
+	while IFS= read -r line; do
+		if [[ -n "$line" ]]; then
+			selected_files+=("$line")
+		fi
+	done <<<"$selected_files_str"
+
+	# --- Path Relativization ---
+	local relative_paths=()
+
+	if $use_zoxide || [[ -n "$path_arg" ]]; then
+		if [[ ${#selected_files[@]} -eq 0 ]]; then
+			relative_paths=("${search_dirs[@]}")
+		elif [[ ${#search_dirs[@]} -eq 1 ]]; then
+			relative_paths=("${selected_files[@]/#/${search_dirs[0]}\/}")
+		else
+			relative_paths=("${selected_files[@]}")
+		fi
+	else
+		# The picker searched a single directory (pane cwd, or the repo root for
+		# --git-root) and fd/find emitted paths relative to it. Those are used
+		# as-is: cwd-relative paths are valid where the shell sits; repo-relative
+		# paths are made valid by the cd-to-root prefix added below.
+		relative_paths=("${selected_files[@]}")
+	fi
+
+	# --- Output Formatting ---
+	local files_oneline
+	if $at_prefix_mode; then
+		# Agent pane: insert as @-mentions (no command prefix).
+		printf -v files_oneline "@%s " "${relative_paths[@]}"
+	else
+		# Shell pane: shell-escape and prefix with a command. Directory pickers
+		# get "cd", file pickers get the editor ("vim").
+		local escaped_paths=()
+		for path in "${relative_paths[@]}"; do
+			printf -v escaped_path "%q" "$path"
+			escaped_paths+=("$escaped_path")
+		done
+
+		if $use_git_root && $select_directories && [[ -n "$git_root" ]]; then
+			# Git-root directory picker: emit a single absolute cd to the chosen
+			# directory (avoids a redundant "cd <root> && cd <subdir>" chain).
+			local abs_paths=()
+			local rel
+			for rel in "${relative_paths[@]}"; do
+				local abs escaped_abs
+				abs="${git_root}/${rel}"
+				printf -v escaped_abs "%q" "$abs"
+				abs_paths+=("$escaped_abs")
+			done
+			files_oneline="${dir_cmd} $(printf "%s " "${abs_paths[@]}")"
+		else
+			# File pickers get the editor; current-dir dir pickers get cd.
+			local cmd_prefix
+			if $select_directories; then
+				cmd_prefix="$dir_cmd"
+			else
+				cmd_prefix="$file_cmd"
+			fi
+			files_oneline="${cmd_prefix} $(printf "%s " "${escaped_paths[@]}")"
+
+			# --git-root (file picker): paths are relative to the repo root, so cd
+			# there first (unless the pane is already at the root) to keep valid.
+			if $use_git_root && [[ -n "$git_root" && "$git_root" != "$pane_dir" ]]; then
+				local escaped_root
+				printf -v escaped_root "%q" "$git_root"
+				files_oneline="cd ${escaped_root} && ${files_oneline}"
+			fi
+		fi
+	fi
+
+	# --- Send to herdr pane ---
+	herdr pane send-text "$pane_id" "$files_oneline"
+}
+
+main "$@"
