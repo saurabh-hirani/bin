@@ -8,7 +8,9 @@ usage() {
 Usage: $(basename "$0") <dir> [char] [options]
 
 Rename files directly inside <dir>, replacing each space in the filename with
-<char>. Only top-level files are processed (not subdirectories, not recursive).
+<char>. Handles regular spaces (U+0020) as well as no-break spaces
+(U+00A0) and narrow no-break spaces (U+202F, used by macOS before AM/PM).
+Only top-level files are processed (not subdirectories, not recursive).
 
 Arguments:
   dir             Directory whose files will be renamed
@@ -101,12 +103,23 @@ main() {
     local base
     base="$(basename "$path")"
 
-    # No space in the name, nothing to do.
-    if [[ "$base" != *" "* ]]; then
+    # Space characters to replace: regular space (U+0020),
+    # no-break space (U+00A0), and narrow no-break space (U+202F).
+    # macOS uses U+202F before AM/PM in screenshot names.
+    # Use raw UTF-8 byte escapes so this works under macOS bash 3.2,
+    # which does not support the $'\uXXXX' unicode escape.
+    local nbsp=$'\xc2\xa0'
+    local nnbsp=$'\xe2\x80\xaf'
+
+    # Nothing to do if the name has none of these.
+    if [[ "$base" != *" "* && "$base" != *"$nbsp"* && "$base" != *"$nnbsp"* ]]; then
       continue
     fi
 
-    local new_base="${base// /$char}"
+    local new_base="$base"
+    new_base="${new_base// /$char}"
+    new_base="${new_base//$nbsp/$char}"
+    new_base="${new_base//$nnbsp/$char}"
     local new_path="$dir/$new_base"
 
     if [[ -e "$new_path" ]]; then
