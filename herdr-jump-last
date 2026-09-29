@@ -1,0 +1,46 @@
+#!/bin/bash
+set -uo pipefail
+
+# herdr-jump-last
+#
+# Jump to the most-recently-used workspace that isn't the current one, using the
+# MRU file written by herdr-focus-mru. This is a "last workspace" toggle: focus
+# A then B, and this jumps back to A. Falls back to the first non-focused,
+# non-worktree workspace in natural order when the MRU has no other candidate.
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/herdr"
+mru_file="$state_dir/workspace-mru"
+
+current="$(herdr workspace list 2>/dev/null \
+    | jq -r '.result.workspaces[] | select(.focused==true) | .workspace_id')"
+
+# Valid switch targets: not focused, not a linked worktree.
+valid="$(herdr workspace list 2>/dev/null | jq -r '
+    .result.workspaces[]
+    | select(.focused != true)
+    | select(.worktree == null or (.worktree.is_linked_worktree | not))
+    | .workspace_id
+')"
+
+if [[ -z "$valid" ]]; then
+    exit 0
+fi
+
+target=""
+# First MRU entry (newest first) that is a valid, non-current target.
+if [[ -f "$mru_file" ]]; then
+    while IFS= read -r id; do
+        [[ -z "$id" || "$id" == "$current" ]] && continue
+        if printf '%s\n' "$valid" | grep -qxF "$id"; then
+            target="$id"
+            break
+        fi
+    done < "$mru_file"
+fi
+
+# Fallback: first valid workspace in natural order.
+if [[ -z "$target" ]]; then
+    target="$(printf '%s\n' "$valid" | head -1)"
+fi
+
+[[ -n "$target" ]] && exec herdr-focus-mru "$target"

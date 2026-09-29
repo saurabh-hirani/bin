@@ -1,0 +1,32 @@
+#!/bin/bash
+set -uo pipefail
+
+# herdr-focus-mru <workspace_id>
+#
+# Focus a herdr workspace and record it at the top of an MRU (most-recently-used)
+# list. The MRU file drives herdr-ws-picker so the last-used workspace surfaces
+# first. herdr itself exposes no usage/last-active timestamp, so we track it here
+# by routing every keybound workspace focus through this wrapper.
+
+ws_id="${1:-}"
+if [[ -z "$ws_id" ]]; then
+    echo "usage: herdr-focus-mru <workspace_id>" >&2
+    exit 1
+fi
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/herdr"
+mru_file="$state_dir/workspace-mru"
+mkdir -p "$state_dir"
+
+# Prepend this workspace, drop any earlier occurrence, cap the file length.
+# grep returning nonzero (no matches left) must not abort the script.
+existing=""
+if [[ -f "$mru_file" ]]; then
+    existing="$(grep -vxF "$ws_id" "$mru_file" || true)"
+fi
+{
+    printf '%s\n' "$ws_id"
+    [[ -n "$existing" ]] && printf '%s\n' "$existing"
+} | head -n 100 > "$mru_file"
+
+exec herdr workspace focus "$ws_id"
