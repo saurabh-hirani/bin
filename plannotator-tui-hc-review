@@ -1,0 +1,202 @@
+#!/bin/bash
+# Run a plannotator-tui code review in the current herdr pane, sending feedback to the pi agent in the pane to its left.
+
+set -eou pipefail
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") [--staged | --base REF | --commit SHA | --pr PR] [--agent | --to TERMINAL]
+
+Open a plannotator-tui code review of the current git repository in this pane
+(no overlay, no split).
+
+By default, E copies the feedback to the clipboard (pbcopy) and sends nothing.
+With --agent, E sends it to the pi in the pane directly to the left of this one.
+If --agent finds no pi there, it falls back to copying.
+
+Must run inside herdr-core (HC_TERMINAL_ID set) and inside a git repository.
+
+Options:
+  --staged        Review only staged changes
+  --base REF      Review everything since the branch left REF
+  --commit SHA    Review one commit
+  --pr PR         Review a pull request (number or URL; needs gh login)
+  --agent         Send to the pi in the pane to the left instead of copying
+  --to TERMINAL   Send to the pi in this hc terminal (address or name); implies --agent
+  -h, --help      Show this help message
+
+Default scope: uncommitted changes.
+
+Examples:
+  $(basename "$0")
+  $(basename "$0") --staged
+  $(basename "$0") --base main
+  $(basename "$0") --agent
+  $(basename "$0") --to t1ks
+EOF
+}
+
+check_prereqs() {
+  local missing=()
+  for cmd in plannotator-tui hc herdr-app jq git pbcopy; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "error=missing_commands commands=\"${missing[*]}\"" >&2
+    exit 1
+  fi
+  if [[ -z "${HC_TERMINAL_ID:-}" ]]; then
+    echo "error=not_in_herdr_core msg=\"HC_TERMINAL_ID is not set\"" >&2
+    exit 1
+  fi
+}
+
+# Print the herdr pane id that shows the given hc terminal, or nothing.
+pane_of_terminal() {
+  local terminal="$1"
+  herdr-app ls | jq -r --arg t "$terminal" \
+    '[.spaces[].tabs[].terminals[] | select(.terminal == $t) | .pane] | first // empty'
+}
+
+# Print the hc terminal shown in the given herdr pane, or nothing.
+terminal_of_pane() {
+  local pane="$1"
+  herdr-app ls | jq -r --arg p "$pane" \
+    '[.spaces[].tabs[].terminals[] | select(.pane == $p) | .terminal] | first // empty'
+}
+
+focused_pane() {
+  herdr-app status | jq -r '.focused_pane // empty'
+}
+
+# Print the hc terminal in the pane to the left of our own, or nothing.
+# herdr-app has no geometry query, so this moves focus left, reads it, and moves it back.
+left_terminal() {
+  local own_pane="$1"
+  local left_pane
+  herdr-app "do" pane.focus "{\"pane\":\"$own_pane\"}" >/dev/null
+  if ! herdr-app "do" pane.go '{"direction":"left"}' >/dev/null 2>&1; then
+    herdr-app "do" pane.focus "{\"pane\":\"$own_pane\"}" >/dev/null
+    return 0
+  fi
+  left_pane="$(focused_pane)"
+  herdr-app "do" pane.focus "{\"pane\":\"$own_pane\"}" >/dev/null
+  if [[ -z "$left_pane" || "$left_pane" == "$own_pane" ]]; then
+    return 0
+  fi
+  terminal_of_pane "$left_pane"
+}
+
+# Print the foreground pid of the terminal if its program is pi, else nothing.
+pi_pid_of() {
+  local terminal="$1"
+  hc get "$terminal" | jq -r '
+    select(
+      (.status.app // "") == "pi"
+      or (((.foreground.argv // [])[0] // "") | test("(^|/)pi$"))
+    )
+    | .foreground.pid'
+}
+
+# Run the review with pbcopy as the delivery command, so E copies and sends nothing.
+# A delivery command also keeps E from opening the agent picker.
+copy_and_exec() {
+  local scope="$1"
+  local repo="$2"
+  echo "info=deliver_to clipboard=pbcopy scope=$scope repo=$repo" >&2
+  unset PLANNOTATOR_TUI_HC_TERMINAL PLANNOTATOR_TUI_HC_PID PLANNOTATOR_TUI_DELIVER_AGENT
+  export PLANNOTATOR_TUI_DELIVER_CMD="pbcopy"
+  exec plannotator-tui hc pane review "$scope" "$repo"
+}
+
+main() {
+  local scope="uncommitted"
+  local to=""
+  local agent_mode=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      --staged)
+        scope="staged"
+        shift
+        ;;
+      --base)
+        scope="base:${2:?--base needs a REF}"
+        shift 2
+        ;;
+      --commit)
+        scope="commit:${2:?--commit needs a SHA}"
+        shift 2
+        ;;
+      --pr)
+        scope="pr:${2:?--pr needs a PR number or URL}"
+        shift 2
+        ;;
+      --agent)
+        agent_mode=1
+        shift
+        ;;
+      --to)
+        to="${2:?--to needs a terminal}"
+        agent_mode=1
+        shift 2
+        ;;
+      *)
+        echo "error=unknown_argument arg=\"$1\"" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+
+  check_prereqs
+
+  local repo
+  if ! repo="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    echo "error=not_a_git_repo cwd=\"$PWD\"" >&2
+    exit 1
+  fi
+
+  if [[ "$agent_mode" -eq 0 ]]; then
+    copy_and_exec "$scope" "$repo"
+  fi
+
+  local target="$to"
+  if [[ -z "$target" ]]; then
+    local own_pane
+    own_pane="$(pane_of_terminal "$HC_TERMINAL_ID")"
+    if [[ -z "$own_pane" ]]; then
+      echo "warn=pane_not_found terminal=$HC_TERMINAL_ID" >&2
+    else
+      target="$(left_terminal "$own_pane")"
+    fi
+  fi
+
+  local pid=""
+  if [[ -n "$target" ]]; then
+    pid="$(pi_pid_of "$target")"
+    if [[ -z "$pid" ]]; then
+      echo "warn=no_pi_agent terminal=$target msg=\"falling back to clipboard\"" >&2
+      copy_and_exec "$scope" "$repo"
+    fi
+  else
+    echo "warn=no_left_pane msg=\"falling back to clipboard\"" >&2
+    copy_and_exec "$scope" "$repo"
+  fi
+
+  echo "info=deliver_to terminal=$target agent=pi pid=$pid scope=$scope repo=$repo" >&2
+  export PLANNOTATOR_TUI_HC_TERMINAL="$target"
+  export PLANNOTATOR_TUI_HC_PID="$pid"
+  export PLANNOTATOR_TUI_DELIVER_AGENT="pi"
+  PLANNOTATOR_TUI_HC_BIN="$(command -v hc)"
+  export PLANNOTATOR_TUI_HC_BIN
+  exec plannotator-tui hc pane review "$scope" "$repo"
+}
+
+main "$@"
