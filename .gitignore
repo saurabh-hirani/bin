@@ -86,3 +86,6 @@ cython_debug/
 
 # gh-pr-review-checkout: local config
 gh-review-checkout-config.jsonl
+
+# glab-mr-review-checkout: local config
+glab-review-checkout-config.jsonl
