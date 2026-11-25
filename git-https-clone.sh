@@ -3,6 +3,9 @@
 
 set -eou pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+CONFIG_FILE="${GIT_HTTPS_CLONE_CONFIG:-${SCRIPT_DIR}/git-https-clone-config.jsonl}"
+
 usage() {
   cat >&2 <<EOF
 Usage: $(basename "$0") <repo-url> <parent-dir> [options]
@@ -19,10 +22,17 @@ Arguments:
   parent-dir      Directory that holds (or will hold) the clone
 
 Options:
-  --user NAME     GitHub username put in the remote URL (default: saurabh-hirani)
-  --name NAME     git user.name to set (default: Saurabh Hirani)
-  --email EMAIL   git user.email to set (default: saurabh.hirani@gmail.com)
+  --user NAME     GitHub username put in the remote URL (default: "user" from the config file)
+  --name NAME     git user.name to set (default: "name" from the config file)
+  --email EMAIL   git user.email to set (default: "email" from the config file)
   -h, --help      Show this help message
+
+Config: ${CONFIG_FILE}
+  JSON Lines; the first non-empty line is used. Keys: "user", "name", "email".
+  An option on the command line wins over the config. A key is required only when its
+  option is not given.
+  Not checked in. Copy git-https-clone-config.jsonl.example next to this script and edit it.
+  Override the path with GIT_HTTPS_CLONE_CONFIG.
 
 Behaviour:
   Not cloned yet:  gh repo view, git clone with username URL, set credential.helper,
@@ -36,13 +46,13 @@ Output:
 
 Examples:
   $(basename "$0") https://github.com/OWNER/REPO.git ~/github/OWNER
-  $(basename "$0") saurabh-hirani/bin ~/github/saurabh-hirani
+  $(basename "$0") OWNER/REPO ~/github/OWNER --user alice --name "Alice Example" --email alice@example.com
 EOF
 }
 
 check_prereqs() {
   local missing=()
-  for cmd in git gh sed; do
+  for cmd in git gh sed jq; do
     if ! command -v "$cmd" &>/dev/null; then
       missing+=("$cmd")
     fi
@@ -126,8 +136,18 @@ fix_existing() {
   set_config "$dir" "$name" "$email" yes
 }
 
+# Print one key from the first non-empty line of the config file.
+read_config() {
+  local key="$1"
+  [[ -f "$CONFIG_FILE" ]] || die "config not found: ${CONFIG_FILE} (copy ${CONFIG_FILE}.example there, or pass --${key})"
+  local value
+  value="$(grep -m1 -v '^[[:space:]]*$' "$CONFIG_FILE" | jq -r --arg k "$key" '.[$k] // empty')"
+  [[ -n "$value" ]] || die "no \"${key}\" in the first line of ${CONFIG_FILE} (or pass --${key})"
+  echo "$value"
+}
+
 main() {
-  local url="" parent="" user="saurabh-hirani" name="Saurabh Hirani" email="saurabh.hirani@gmail.com"
+  local url="" parent="" user="" name="" email=""
   local args=()
 
   while [[ $# -gt 0 ]]; do
@@ -167,6 +187,10 @@ main() {
   parent="${args[1]}"
 
   check_prereqs
+
+  [[ -n "$user" ]] || user="$(read_config user)"
+  [[ -n "$name" ]] || name="$(read_config name)"
+  [[ -n "$email" ]] || email="$(read_config email)"
 
   local slug repo remote dir
   slug=$(parse_slug "$url")

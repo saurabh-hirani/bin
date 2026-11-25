@@ -92,3 +92,6 @@ glab-review-checkout-config.jsonl
 
 # plannotator working state
 .plannotator-checkpoint/
+
+# git-https-clone.sh: local config
+git-https-clone-config.jsonl
