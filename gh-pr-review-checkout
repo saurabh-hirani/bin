@@ -3,7 +3,8 @@
 
 set -eou pipefail
 
-DEFAULT_REVIEWS_DIR="${HOME}/github/reviews"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+CONFIG_FILE="${GH_REVIEW_CHECKOUT_CONFIG:-${SCRIPT_DIR}/gh-review-checkout-config.jsonl}"
 DEFAULT_USER="saurabh-hirani"
 
 usage() {
@@ -19,9 +20,14 @@ Arguments:
 
 Options:
   --repo OWNER/REPO    Repository; required when a bare PR number is given
-  --reviews-dir DIR    Where clones live (default: ${DEFAULT_REVIEWS_DIR})
+  --reviews-dir DIR    Where clones live (default: "reviews_dir" from the config file)
   --user NAME          GitHub username put in the remote URL (default: ${DEFAULT_USER})
   -h, --help           Show this help message
+
+Config: ${CONFIG_FILE}
+  JSON Lines; the first non-empty line is used. Key: "reviews_dir" (a leading ~ is expanded).
+  Not checked in. Copy gh-review-checkout-config.jsonl.example next to this script and edit it.
+  Override the path with GH_REVIEW_CHECKOUT_CONFIG.
 
 Why HTTPS: ~/.gitconfig rewrites https://github.com/ to SSH, which fails when port 22 is
 blocked. The username in the remote URL skips the rewrite, and 'gh' supplies credentials.
@@ -36,7 +42,7 @@ EOF
 
 check_prereqs() {
   local missing=()
-  for cmd in gh git; do
+  for cmd in gh git jq; do
     if ! command -v "$cmd" &>/dev/null; then
       missing+=("$cmd")
     fi
@@ -49,6 +55,22 @@ check_prereqs() {
     echo "gh is not logged in; run: gh auth login" >&2
     exit 1
   fi
+}
+
+# Print reviews_dir from the first non-empty line of the config file.
+read_reviews_dir() {
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "Config not found: ${CONFIG_FILE}" >&2
+    echo "Copy ${CONFIG_FILE}.example to that path and edit it, or pass --reviews-dir." >&2
+    exit 1
+  fi
+  local value
+  value="$(grep -m1 -v '^[[:space:]]*$' "$CONFIG_FILE" | jq -r '.reviews_dir // empty')"
+  if [[ -z "$value" ]]; then
+    echo "No \"reviews_dir\" in the first line of ${CONFIG_FILE}" >&2
+    exit 1
+  fi
+  echo "${value/#\~/$HOME}"
 }
 
 log() {
@@ -136,7 +158,7 @@ EOF
 }
 
 main() {
-  local target="" reviews_dir="$DEFAULT_REVIEWS_DIR" user="$DEFAULT_USER"
+  local target="" reviews_dir="" user="$DEFAULT_USER"
   REPO=""
   PR=""
 
@@ -172,6 +194,10 @@ main() {
 
   : "${target:?PR url or number is required (see --help)}"
   check_prereqs
+
+  if [[ -z "$reviews_dir" ]]; then
+    reviews_dir="$(read_reviews_dir)"
+  fi
 
   if [[ "$target" =~ ^[0-9]+$ ]]; then
     PR="$target"

@@ -83,3 +83,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# gh-pr-review-checkout: local config
+gh-review-checkout-config.jsonl
