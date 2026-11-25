@@ -4,12 +4,13 @@
 set -eou pipefail
 
 DEFAULT_REVIEWS_DIR="${HOME}/github/reviews"
+DEFAULT_USER="saurabh-hirani"
 
 usage() {
   cat >&2 <<EOF
 Usage: $(basename "$0") <pr-url | pr-number> [options]
 
-Clone (or reuse) a GitHub repo under the reviews dir, check out the PR branch,
+Clone (or reuse) a GitHub repo under the reviews dir over HTTPS, check out the PR head (works for open and merged PRs),
 and print the PR's commits. Prints the clone path on stdout so you can cd into it
 and run plannotator-tui-hc-review there.
 
@@ -19,7 +20,12 @@ Arguments:
 Options:
   --repo OWNER/REPO    Repository; required when a bare PR number is given
   --reviews-dir DIR    Where clones live (default: ${DEFAULT_REVIEWS_DIR})
+  --user NAME          GitHub username put in the remote URL (default: ${DEFAULT_USER})
   -h, --help           Show this help message
+
+Why HTTPS: ~/.gitconfig rewrites https://github.com/ to SSH, which fails when port 22 is
+blocked. The username in the remote URL skips the rewrite, and 'gh' supplies credentials.
+See misc/learn-git/https-push.md.
 
 Examples:
   $(basename "$0") https://github.com/one2nc/langfuse-workshop/pull/2
@@ -62,7 +68,7 @@ parse_url() {
 }
 
 main() {
-  local target="" reviews_dir="$DEFAULT_REVIEWS_DIR"
+  local target="" reviews_dir="$DEFAULT_REVIEWS_DIR" user="$DEFAULT_USER"
   REPO=""
   PR=""
 
@@ -78,6 +84,10 @@ main() {
         ;;
       --reviews-dir)
         reviews_dir="${2:?--reviews-dir needs a directory}"
+        shift 2
+        ;;
+      --user)
+        user="${2:?--user needs a GitHub username}"
         shift 2
         ;;
       -*)
@@ -105,37 +115,48 @@ main() {
   local name="${REPO##*/}"
   local dir="${reviews_dir}/pr-${PR}-${name}"
 
+  local url="https://${user}@github.com/${REPO}.git"
+
   mkdir -p "$reviews_dir"
   if [[ -d "${dir}/.git" ]]; then
     log "action=reuse dir=${dir}"
   else
     log "action=clone repo=${REPO} dir=${dir}"
-    gh repo clone "$REPO" "$dir" >&2
+    git clone "$url" "$dir" >&2
   fi
 
   cd "$dir"
 
+  # Idempotent: also repairs clones made earlier with an SSH origin.
+  git remote set-url origin "$url"
+  git config credential.helper '!gh auth git-credential'
+
   # Forks get an "upstream" remote, and gh may resolve PR numbers against it.
   gh repo set-default "$REPO" >&2
 
-  log "action=checkout pr=${PR}"
-  gh pr checkout "$PR" -R "$REPO" >&2
+  # refs/pull/N/head survives merge and branch deletion, unlike the PR's source branch.
+  log "action=fetch ref=refs/pull/${PR}/head"
+  git fetch origin "refs/pull/${PR}/head" >&2
+  git checkout -q -B "pr-${PR}" FETCH_HEAD >&2
 
-  local base
+  local state base base_oid
+  state="$(gh pr view "$PR" -R "$REPO" --json state --jq .state)"
   base="$(gh pr view "$PR" -R "$REPO" --json baseRefName --jq .baseRefName)"
+  base_oid="$(gh pr view "$PR" -R "$REPO" --json baseRefOid --jq .baseRefOid)"
   git fetch origin "$base" >&2
 
+  # Fork point of the PR branch, so the diff stays fixed however far the base branch moves.
   local merge_base
-  merge_base="$(git merge-base "origin/${base}" HEAD)"
+  merge_base="$(git merge-base "$base_oid" HEAD)"
 
-  log "branch=$(git branch --show-current) base=origin/${base}"
+  log "state=${state} branch=pr-${PR} base_branch=${base} base_sha=${merge_base}"
   log ""
   log "Commits (oldest first):"
   git log --reverse --format='  %h %s' "${merge_base}..HEAD" >&2
   log ""
   log "Next, from ${dir}:"
-  log "  plannotator-tui-hc-review --base origin/${base}    # whole PR"
-  log "  plannotator-tui-hc-review --commit <sha>           # one commit"
+  log "  plannotator-tui-hc-review --base ${merge_base}    # whole PR"
+  log "  plannotator-tui-hc-review --commit <sha>          # one commit"
 
   echo "$dir"
 }
