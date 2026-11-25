@@ -31,12 +31,12 @@ Config: ${CONFIG_FILE}
 
 Why HTTPS: ~/.gitconfig rewrites https://github.com/ to SSH, which fails when port 22 is
 blocked. The username in the remote URL skips the rewrite, and 'gh' supplies credentials.
-See misc/learn-git/https-push.md.
+The token comes from the gh credential helper, so no SSH key is needed.
 
 Examples:
-  $(basename "$0") https://github.com/one2nc/langfuse-workshop/pull/2
-  $(basename "$0") 2 --repo one2nc/langfuse-workshop
-  cd "\$($(basename "$0") 2 --repo one2nc/langfuse-workshop)"
+  $(basename "$0") https://github.com/OWNER/REPO/pull/42
+  $(basename "$0") 42 --repo OWNER/REPO
+  cd "\$($(basename "$0") 42 --repo OWNER/REPO)"
 EOF
 }
 
