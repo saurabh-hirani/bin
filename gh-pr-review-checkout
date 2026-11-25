@@ -1,0 +1,143 @@
+#!/bin/bash
+# Clone a GitHub repo into the reviews dir, check out a PR, and list its commits for plannotator review.
+
+set -eou pipefail
+
+DEFAULT_REVIEWS_DIR="${HOME}/github/reviews"
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") <pr-url | pr-number> [options]
+
+Clone (or reuse) a GitHub repo under the reviews dir, check out the PR branch,
+and print the PR's commits. Prints the clone path on stdout so you can cd into it
+and run plannotator-tui-hc-review there.
+
+Arguments:
+  pr-url | pr-number   PR URL (https://github.com/OWNER/REPO/pull/N) or a bare number
+
+Options:
+  --repo OWNER/REPO    Repository; required when a bare PR number is given
+  --reviews-dir DIR    Where clones live (default: ${DEFAULT_REVIEWS_DIR})
+  -h, --help           Show this help message
+
+Examples:
+  $(basename "$0") https://github.com/one2nc/langfuse-workshop/pull/2
+  $(basename "$0") 2 --repo one2nc/langfuse-workshop
+  cd "\$($(basename "$0") 2 --repo one2nc/langfuse-workshop)"
+EOF
+}
+
+check_prereqs() {
+  local missing=()
+  for cmd in gh git; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Missing required commands: ${missing[*]}" >&2
+    exit 1
+  fi
+  if ! gh auth status &>/dev/null; then
+    echo "gh is not logged in; run: gh auth login" >&2
+    exit 1
+  fi
+}
+
+log() {
+  echo "$*" >&2
+}
+
+# Sets REPO and PR from a PR URL.
+parse_url() {
+  local url="$1"
+  if [[ "$url" =~ ^https?://github\.com/([^/]+/[^/]+)/pulls?/([0-9]+) ]]; then
+    REPO="${BASH_REMATCH[1]}"
+    PR="${BASH_REMATCH[2]}"
+  else
+    echo "Cannot parse PR URL: ${url}" >&2
+    exit 1
+  fi
+}
+
+main() {
+  local target="" reviews_dir="$DEFAULT_REVIEWS_DIR"
+  REPO=""
+  PR=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      --repo)
+        REPO="${2:?--repo needs OWNER/REPO}"
+        shift 2
+        ;;
+      --reviews-dir)
+        reviews_dir="${2:?--reviews-dir needs a directory}"
+        shift 2
+        ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+      *)
+        target="$1"
+        shift
+        ;;
+    esac
+  done
+
+  : "${target:?PR url or number is required (see --help)}"
+  check_prereqs
+
+  if [[ "$target" =~ ^[0-9]+$ ]]; then
+    PR="$target"
+    : "${REPO:?--repo OWNER/REPO is required with a bare PR number}"
+  else
+    parse_url "$target"
+  fi
+
+  local name="${REPO##*/}"
+  local dir="${reviews_dir}/pr-${PR}-${name}"
+
+  mkdir -p "$reviews_dir"
+  if [[ -d "${dir}/.git" ]]; then
+    log "action=reuse dir=${dir}"
+  else
+    log "action=clone repo=${REPO} dir=${dir}"
+    gh repo clone "$REPO" "$dir" >&2
+  fi
+
+  cd "$dir"
+
+  # Forks get an "upstream" remote, and gh may resolve PR numbers against it.
+  gh repo set-default "$REPO" >&2
+
+  log "action=checkout pr=${PR}"
+  gh pr checkout "$PR" -R "$REPO" >&2
+
+  local base
+  base="$(gh pr view "$PR" -R "$REPO" --json baseRefName --jq .baseRefName)"
+  git fetch origin "$base" >&2
+
+  local merge_base
+  merge_base="$(git merge-base "origin/${base}" HEAD)"
+
+  log "branch=$(git branch --show-current) base=origin/${base}"
+  log ""
+  log "Commits (oldest first):"
+  git log --reverse --format='  %h %s' "${merge_base}..HEAD" >&2
+  log ""
+  log "Next, from ${dir}:"
+  log "  plannotator-tui-hc-review --base origin/${base}    # whole PR"
+  log "  plannotator-tui-hc-review --commit <sha>           # one commit"
+
+  echo "$dir"
+}
+
+main "$@"
